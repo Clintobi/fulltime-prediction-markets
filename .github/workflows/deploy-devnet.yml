@@ -1,0 +1,49 @@
+name: Build & Deploy to Devnet
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install anchor-cli --locked
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Generate Devnet Keypair
+        run: |
+          solana-keygen new --no-bip39-passphrase -o id.json
+          solana config set --keypair id.json --url https://api.devnet.solana.com
+          solana airdrop 2 || true
+
+      - name: Build Anchor Program
+        run: |
+          anchor build
+
+      - name: Deploy to Devnet
+        run: |
+          anchor deploy --provider.cluster devnet --provider.wallet ./id.json
+        env:
+          ANCHOR_WALLET: ./id.json
+
+      - name: Output Program ID
+        run: |
+          echo "Deployed program ID:"
+          grep -r "declare_id" programs/*/src/lib.rs | head -1
