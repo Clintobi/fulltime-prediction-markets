@@ -21,13 +21,6 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
-      - name: Install Anchor CLI 0.30.1
-        run: |
-          # NOTE: no --locked — the pinned `time` crate fails to compile on
-          # current Rust (E0282). Unlocked resolves a compatible version.
-          cargo install anchor-cli --version 0.30.1
-          anchor --version
-
       - name: Load deployer + program keypairs
         run: |
           mkdir -p ~/.config/solana target/deploy
@@ -51,11 +44,17 @@ jobs:
             exit 1
           }
 
-      - name: Anchor build
-        run: anchor build
+      - name: Build program (SBF)
+        # Same SBF compile anchor build runs, minus the IDL/overflow pre-checks
+        # and the slow anchor-cli install. Produces target/deploy/fulltime.so.
+        run: cargo build-sbf
 
-      - name: Anchor deploy (devnet)
-        run: anchor deploy --provider.cluster devnet --provider.wallet ~/.config/solana/id.json
+      - name: Deploy to devnet
+        run: |
+          solana program deploy target/deploy/fulltime.so \
+            --program-id target/deploy/fulltime-keypair.json \
+            --keypair ~/.config/solana/id.json \
+            --url https://api.devnet.solana.com
 
       - name: Verify on-chain
         run: |
