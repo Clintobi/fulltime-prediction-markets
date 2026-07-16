@@ -15,6 +15,11 @@ jobs:
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # Match Solana 1.18.26 platform-tools cargo (writes lockfile v3).
+          # Ambient stable (1.97) would regenerate a v4 lock the SBF cargo
+          # can't parse.
+          toolchain: "1.75.0"
 
       - name: Install Solana CLI (Anza v1.18.26)
         run: |

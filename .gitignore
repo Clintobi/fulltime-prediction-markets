@@ -7,4 +7,3 @@ target/
 .env
 _keys/
 _idl/
-Cargo.lock
