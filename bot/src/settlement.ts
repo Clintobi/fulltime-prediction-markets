@@ -17,7 +17,7 @@ const DEVNET = {
   apiOrigin: 'https://txline-dev.txodds.com',
   programId: new PublicKey('6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J'),
   txlTokenMint: new PublicKey('4Zao8ocPhmMgq7PdsYWyxvqySMGx7xb9cMftPMkEokRG'),
-  fulltimeProgramId: new PublicKey('FULLTiME11111111111111111111111111111111111'),
+  fulltimeProgramId: new PublicKey('37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW'),
 }
 
 export async function settleMarket(

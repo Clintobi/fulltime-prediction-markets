@@ -147,8 +147,8 @@ See `demo/` for screen recording assets. The demo covers:
 
 ### Deployed Build
 
-- **Frontend**: `https://fulltime.vercel.app`
-- **Devnet Program**: `FULLTiME11111111111111111111111111111111111`
+- **Frontend**: `https://fulltime-txline.vercel.app`
+- **Devnet Program**: `37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW`
 - **TxLINE Program**: `6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J`
 
 ### Technical Highlights

@@ -6,7 +6,7 @@ seeds = true
 skip-lint = false
 
 [programs.devnet]
-fulltime = "FULLTiME11111111111111111111111111111111111"
+fulltime = "37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW"
 
 [provider]
 cluster = "devnet"

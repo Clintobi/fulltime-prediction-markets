@@ -1,49 +1,64 @@
-name: Build & Deploy to Devnet
+name: Deploy Fulltime to Devnet
 
+# Manual trigger only. The deployer wallet is pre-funded via the web faucet and
+# provided as a repo secret, so we don't depend on CI-side airdrops (which
+# GitHub runner IPs are usually rate-limited out of).
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install Solana CLI
+      - name: Install Solana CLI (Anza v1.18.26)
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
-      - name: Install Anchor CLI
+      - name: Install Anchor CLI 0.30.1
         run: |
-          cargo install anchor-cli --locked
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          # NOTE: no --locked — the pinned `time` crate fails to compile on
+          # current Rust (E0282). Unlocked resolves a compatible version.
+          cargo install anchor-cli --version 0.30.1
+          anchor --version
 
-      - name: Generate Devnet Keypair
+      - name: Load deployer + program keypairs
         run: |
-          solana-keygen new --no-bip39-passphrase -o id.json
-          solana config set --keypair id.json --url https://api.devnet.solana.com
-          solana airdrop 2 || true
+          mkdir -p ~/.config/solana target/deploy
+          printf '%s' '${{ secrets.DEPLOYER_KEYPAIR }}' > ~/.config/solana/id.json
+          printf '%s' '${{ secrets.PROGRAM_KEYPAIR }}'  > target/deploy/fulltime-keypair.json
+          solana config set --keypair ~/.config/solana/id.json --url https://api.devnet.solana.com
+          echo "Deployer: $(solana address)"
+          echo "Program : $(solana address -k target/deploy/fulltime-keypair.json)"
 
-      - name: Build Anchor Program
+      - name: Best-effort airdrop (may be rate-limited — not relied upon)
+        continue-on-error: true
         run: |
-          anchor build
+          for i in 1 2 3; do solana airdrop 2 && break || sleep 15; done
 
-      - name: Deploy to Devnet
+      - name: Require funding
         run: |
-          anchor deploy --provider.cluster devnet --provider.wallet ./id.json
-        env:
-          ANCHOR_WALLET: ./id.json
+          BAL=$(solana balance | awk '{print $1}')
+          echo "Deployer balance: $BAL SOL"
+          awk "BEGIN{exit !($BAL >= 2.5)}" || {
+            echo "::error::Deployer under-funded ($BAL SOL). Fund $(solana address) at https://faucet.solana.com (devnet) and re-run."
+            exit 1
+          }
 
-      - name: Output Program ID
+      - name: Anchor build
+        run: anchor build
+
+      - name: Anchor deploy (devnet)
+        run: anchor deploy --provider.cluster devnet --provider.wallet ~/.config/solana/id.json
+
+      - name: Verify on-chain
         run: |
-          echo "Deployed program ID:"
-          grep -r "declare_id" programs/*/src/lib.rs | head -1
+          PROGRAM=37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW
+          solana program show "$PROGRAM" --url https://api.devnet.solana.com
+          echo "✅ Deployed: https://explorer.solana.com/address/$PROGRAM?cluster=devnet"

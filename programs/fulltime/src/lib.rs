@@ -1,9 +1,11 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 use anchor_lang::solana_program::program::invoke;
-use anchor_spl::token_2022::{self, Token2022};
-use anchor_spl::token_interface::{Mint, TokenAccount};
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token_2022::Token2022;
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TransferChecked};
 
-declare_id!("FULLTiME11111111111111111111111111111111111");
+declare_id!("37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW");
 
 #[program]
 pub mod fulltime {
@@ -29,107 +31,171 @@ pub mod fulltime {
     }
 
     pub fn deposit_yes(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        require!(
+            ctx.accounts.market.state == MarketState::Open,
+            MarketError::NotOpen
+        );
+        transfer_in(&ctx, amount)?;
+
+        let user_key = ctx.accounts.user.key();
+        let market_key = ctx.accounts.market.key();
+
         let m = &mut ctx.accounts.market;
-        require!(m.state == MarketState::Open, MarketError::NotOpen);
-        transfer_usdc(&ctx, amount)?;
         m.yes_amount = m.yes_amount.checked_add(amount).unwrap();
 
         let d = &mut ctx.accounts.deposit;
-        d.owner = ctx.accounts.user.key();
-        d.market = m.key();
+        d.owner = user_key;
+        d.market = market_key;
         d.amount = d.amount.checked_add(amount).unwrap();
         d.is_yes = true;
         Ok(())
     }
 
     pub fn deposit_no(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        require!(
+            ctx.accounts.market.state == MarketState::Open,
+            MarketError::NotOpen
+        );
+        transfer_in(&ctx, amount)?;
+
+        let user_key = ctx.accounts.user.key();
+        let market_key = ctx.accounts.market.key();
+
         let m = &mut ctx.accounts.market;
-        require!(m.state == MarketState::Open, MarketError::NotOpen);
-        transfer_usdc(&ctx, amount)?;
         m.no_amount = m.no_amount.checked_add(amount).unwrap();
 
         let d = &mut ctx.accounts.deposit;
-        d.owner = ctx.accounts.user.key();
-        d.market = m.key();
+        d.owner = user_key;
+        d.market = market_key;
         d.amount = d.amount.checked_add(amount).unwrap();
         d.is_yes = false;
         Ok(())
     }
 
     pub fn settle(ctx: Context<Settle>, proof: SettlementProof) -> Result<()> {
+        let settler = ctx.accounts.settler.key();
         require!(
-            ctx.accounts.settler.key() == ctx.accounts.market.settle_authority
-                || ctx.accounts.settler.key() == ctx.accounts.market.authority,
+            settler == ctx.accounts.market.settle_authority
+                || settler == ctx.accounts.market.authority,
             MarketError::Unauthorized
         );
-        let m = &mut ctx.accounts.market;
-        require!(m.state == MarketState::Open, MarketError::NotOpen);
+        require!(
+            ctx.accounts.market.state == MarketState::Open,
+            MarketError::NotOpen
+        );
 
+        // CPI to TxLINE's validateStatV2 — proves the score cryptographically.
         let ix = build_validate_stat_v2_ix(
             &ctx.accounts.txline_program.key(),
             &ctx.accounts.daily_scores_merkle_roots.key(),
             &proof,
         );
-
         invoke(
             &ix,
-            &[ctx.accounts.daily_scores_merkle_roots.to_account_info()],
+            &[
+                ctx.accounts.daily_scores_merkle_roots.to_account_info(),
+                ctx.accounts.txline_program.to_account_info(),
+            ],
         )?;
 
-        m.resolution = Some(match &m.market_type {
-            MarketType::MatchWinner { team1_key, team2_key } => {
-                let g1 = proof.get_stat(*team1_key);
-                let g2 = proof.get_stat(*team2_key);
-                if g1 > g2 { Outcome::Yes } else { Outcome::No }
+        let market_type = ctx.accounts.market.market_type.clone();
+        let resolution = match &market_type {
+            MarketType::MatchWinner {
+                team1_key,
+                team2_key,
+            } => {
+                if proof.get_stat(*team1_key) > proof.get_stat(*team2_key) {
+                    Outcome::Yes
+                } else {
+                    Outcome::No
+                }
             }
-            MarketType::OverUnder { stat_key, threshold } => {
-                if proof.get_stat(*stat_key) > *threshold { Outcome::Yes } else { Outcome::No }
+            MarketType::OverUnder {
+                stat_key,
+                threshold,
+            } => {
+                if proof.get_stat(*stat_key) > *threshold {
+                    Outcome::Yes
+                } else {
+                    Outcome::No
+                }
             }
             MarketType::ExactScore { stat_key, target } => {
-                if proof.get_stat(*stat_key) == *target { Outcome::Yes } else { Outcome::No }
+                if proof.get_stat(*stat_key) == *target {
+                    Outcome::Yes
+                } else {
+                    Outcome::No
+                }
             }
-        });
+        };
+
+        let m = &mut ctx.accounts.market;
+        m.resolution = Some(resolution);
         m.state = MarketState::Settled;
         Ok(())
     }
 
     pub fn claim_winnings(ctx: Context<Claim>, amount: u64) -> Result<()> {
-        let m = &ctx.accounts.market;
-        require!(m.state == MarketState::Settled, MarketError::NotSettled);
-        let resolution = m.resolution.ok_or(MarketError::NoResolution)?;
+        require!(
+            ctx.accounts.market.state == MarketState::Settled,
+            MarketError::NotSettled
+        );
+        let resolution = ctx
+            .accounts
+            .market
+            .resolution
+            .ok_or(MarketError::NoResolution)?;
 
-        let deposit = &ctx.accounts.deposit;
-        require!(deposit.owner == ctx.accounts.user.key(), MarketError::Unauthorized);
-        require!(!deposit.claimed, MarketError::AlreadyClaimed);
+        require!(
+            ctx.accounts.deposit.owner == ctx.accounts.user.key(),
+            MarketError::Unauthorized
+        );
+        require!(!ctx.accounts.deposit.claimed, MarketError::AlreadyClaimed);
 
-        let won = matches!((resolution, deposit.is_yes), (Outcome::Yes, true) | (Outcome::No, false));
+        let is_yes = ctx.accounts.deposit.is_yes;
+        let won = matches!(
+            (resolution, is_yes),
+            (Outcome::Yes, true) | (Outcome::No, false)
+        );
         require!(won, MarketError::Lost);
 
-        let total_winning = if deposit.is_yes { m.yes_amount } else { m.no_amount };
+        let total_winning = if is_yes {
+            ctx.accounts.market.yes_amount
+        } else {
+            ctx.accounts.market.no_amount
+        };
         let vault_balance = ctx.accounts.vault.amount;
 
+        // Pro-rata share of the vault for this claimant's stake.
         let payout = if total_winning > 0 && vault_balance > 0 {
             ((vault_balance as u128)
-                .checked_mul(amount as u128).unwrap()
-                .checked_div(total_winning as u128).unwrap()) as u64
+                .checked_mul(amount as u128)
+                .unwrap()
+                .checked_div(total_winning as u128)
+                .unwrap()) as u64
         } else {
             0
         };
 
         if payout > 0 {
-            let seeds = &[b"vault", m.key().as_ref(), &[ctx.accounts.vault_bump]];
-            token_2022::transfer_common(
+            let market_key = ctx.accounts.market.key();
+            let vault_bump = ctx.bumps.vault_authority;
+            let decimals = ctx.accounts.mint.decimals;
+            let seeds: &[&[u8]] = &[b"vault", market_key.as_ref(), &[vault_bump]];
+
+            token_interface::transfer_checked(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
-                    token_2022::TransferCommon {
+                    TransferChecked {
                         from: ctx.accounts.vault.to_account_info(),
+                        mint: ctx.accounts.mint.to_account_info(),
                         to: ctx.accounts.user_token.to_account_info(),
                         authority: ctx.accounts.vault_authority.to_account_info(),
-                        mint: ctx.accounts.mint.to_account_info(),
                     },
-                    &[&seeds[..]],
+                    &[seeds],
                 ),
                 payout,
+                decimals,
             )?;
         }
 
@@ -138,18 +204,20 @@ pub mod fulltime {
     }
 }
 
-fn transfer_usdc(ctx: &Deposit, amount: u64) -> Result<()> {
-    token_2022::transfer_common(
+fn transfer_in(ctx: &Context<Deposit>, amount: u64) -> Result<()> {
+    let decimals = ctx.accounts.mint.decimals;
+    token_interface::transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            token_2022::TransferCommon {
+            TransferChecked {
                 from: ctx.accounts.user_token.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
                 to: ctx.accounts.vault.to_account_info(),
                 authority: ctx.accounts.user.to_account_info(),
-                mint: ctx.accounts.mint.to_account_info(),
             },
         ),
         amount,
+        decimals,
     )
 }
 
@@ -164,7 +232,7 @@ fn build_validate_stat_v2_ix(
 
     data.extend_from_slice(&proof.ts.to_le_bytes());
     data.extend_from_slice(&proof.fixture_id.to_le_bytes());
-    data.extend_from_slice(&(proof.update_count as i32).to_le_bytes());
+    data.extend_from_slice(&proof.update_count.to_le_bytes());
     data.extend_from_slice(&proof.min_timestamp.to_le_bytes());
     data.extend_from_slice(&proof.max_timestamp.to_le_bytes());
     data.extend_from_slice(&proof.events_sub_tree_root);
@@ -205,13 +273,19 @@ fn encode_vec<T, F: Fn(&mut Vec<u8>, &T)>(buf: &mut Vec<u8>, items: &[T], f: F) 
     }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
-pub enum MarketState { Open, Settled }
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum MarketState {
+    Open,
+    Settled,
+}
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
-pub enum Outcome { Yes, No }
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum Outcome {
+    Yes,
+    No,
+}
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
 pub enum MarketType {
     MatchWinner { team1_key: u16, team2_key: u16 },
     OverUnder { stat_key: u16, threshold: u64 },
@@ -267,7 +341,8 @@ pub struct SettlementProof {
 
 impl SettlementProof {
     pub fn get_stat(&self, key: u16) -> u64 {
-        self.stats.iter()
+        self.stats
+            .iter()
             .find(|s| s.stat.key == key as u32)
             .map(|s| s.stat.value.max(0) as u64)
             .unwrap_or(0)
@@ -294,7 +369,7 @@ pub struct CreateMarket<'info> {
         init,
         payer = authority,
         space = 8 + Market::INIT_SPACE,
-        seeds = [b"market", &fixture_id.to_le_bytes()],
+        seeds = [b"market", fixture_id.to_le_bytes().as_ref()],
         bump
     )]
     pub market: Account<'info, Market>,
@@ -323,17 +398,20 @@ pub struct Deposit<'info> {
         mut,
         associated_token::mint = mint,
         associated_token::authority = user,
+        associated_token::token_program = token_program,
     )]
     pub user_token: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        mut,
+        init_if_needed,
+        payer = user,
         associated_token::mint = mint,
         associated_token::authority = vault_authority,
+        associated_token::token_program = token_program,
     )]
     pub vault: InterfaceAccount<'info, TokenAccount>,
 
-    /// CHECK: seed-verified vault PDA
+    /// CHECK: seed-verified vault authority PDA (owns the vault ATA)
     #[account(
         seeds = [b"vault", market.key().as_ref()],
         bump
@@ -342,6 +420,7 @@ pub struct Deposit<'info> {
 
     pub mint: InterfaceAccount<'info, Mint>,
     pub token_program: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
@@ -352,7 +431,7 @@ pub struct Settle<'info> {
 
     pub settler: Signer<'info>,
 
-    /// CHECK: CPI target — TxLINE oracle
+    /// CHECK: CPI target — TxLINE oracle program
     pub txline_program: UncheckedAccount<'info>,
 
     /// CHECK: TxLINE daily_scores_merkle_roots PDA
@@ -379,6 +458,7 @@ pub struct Claim<'info> {
         mut,
         associated_token::mint = mint,
         associated_token::authority = user,
+        associated_token::token_program = token_program,
     )]
     pub user_token: InterfaceAccount<'info, TokenAccount>,
 
@@ -386,20 +466,19 @@ pub struct Claim<'info> {
         mut,
         associated_token::mint = mint,
         associated_token::authority = vault_authority,
+        associated_token::token_program = token_program,
     )]
     pub vault: InterfaceAccount<'info, TokenAccount>,
 
-    /// CHECK: seed-verified vault PDA
+    /// CHECK: seed-verified vault authority PDA (owns the vault ATA)
     #[account(
         seeds = [b"vault", market.key().as_ref()],
-        bump = vault_bump,
+        bump
     )]
     pub vault_authority: UncheckedAccount<'info>,
 
     pub mint: InterfaceAccount<'info, Mint>,
     pub token_program: Program<'info, Token2022>,
-
-    pub vault_bump: u8,
 }
 
 #[error_code]

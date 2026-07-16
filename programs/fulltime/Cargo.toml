@@ -15,7 +15,7 @@ cpi = []
 default = []
 
 [dependencies]
-anchor-lang = "0.30.1"
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.30.1", features = ["token_2022"] }
 spl-token-2022 = { version = "3", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "2", features = ["no-entrypoint"] }
