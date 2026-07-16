@@ -1,0 +1,9 @@
+node_modules/
+.next/
+dist/
+target/
+*.log
+.env.local
+.env
+_keys/
+_idl/
