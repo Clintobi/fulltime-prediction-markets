@@ -3,6 +3,7 @@ name = "fulltime"
 version = "0.1.0"
 description = "Full-Tournament Auto-Market — prediction markets with TxLINE CPI settlement"
 edition = "2021"
+rust-version = "1.75.0"
 
 [lib]
 crate-type = ["cdylib", "lib"]

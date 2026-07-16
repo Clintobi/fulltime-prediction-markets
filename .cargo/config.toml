@@ -1,0 +1,6 @@
+# Resolve dependencies to versions compatible with the program's rust-version
+# (1.75.0 — matches Solana 1.18.26 platform-tools). Without this, cargo pulls
+# the newest patch releases (e.g. digest 0.11 / block-buffer 0.12 which require
+# edition2024 / cargo 1.85+), which the SBF toolchain's cargo can't build.
+[resolver]
+incompatible-rust-versions = "fallback"
