@@ -75,29 +75,91 @@ pub mod fulltime {
         Ok(())
     }
 
-    /// Trustless settlement: prove the market's resolution condition against
-    /// TxLINE's on-chain Merkle root via a CPI to `validate_stat`. `args`
-    /// encodes a predicate (e.g. `home_goals - away_goals > 0`) plus the
-    /// Merkle proofs; if TxLINE's program accepts them, the predicate is
-    /// cryptographically true and the market resolves to `outcome`.
-    pub fn settle(ctx: Context<Settle>, args: ValidateStatArgs, outcome: Outcome) -> Result<()> {
-        let settler = ctx.accounts.settler.key();
-        require!(
-            settler == ctx.accounts.market.settle_authority
-                || settler == ctx.accounts.market.authority,
-            MarketError::Unauthorized
-        );
+    /// Trustless settlement. **Permissionless** — anyone can settle, because the
+    /// outcome is derived on-chain from TxLINE's cryptographic verdict, not chosen
+    /// by the caller. `args` carries the finalised (full-time) score proof; we bind
+    /// it to this market's fixture, constrain its predicate to the market's canonical
+    /// question, CPI to TxLINE's `validate_stat`, and read the returned bool to set
+    /// the resolution. A garbage or tampered proof reverts inside `validate_stat`.
+    pub fn settle(ctx: Context<Settle>, args: ValidateStatArgs) -> Result<()> {
         require!(
             ctx.accounts.market.state == MarketState::Open,
             MarketError::NotOpen
         );
 
-        // Build validate_stat instruction data: 8-byte discriminator followed
-        // by the Borsh-serialized args (field order matches TxLINE's IDL).
+        let fixture_id = ctx.accounts.market.fixture_id;
+        let market_type = ctx.accounts.market.market_type.clone();
+
+        // 1) Bind the proof to THIS market's fixture — a caller can't settle with
+        //    some other match's proof.
+        require!(
+            args.fixture_summary.fixture_id == fixture_id as i64,
+            MarketError::FixtureMismatch
+        );
+
+        // 2) Re-derive the daily-roots PDA from the proof's own timestamp and require
+        //    the passed account matches — a caller can't substitute a fake roots account.
+        let day = (args.fixture_summary.update_stats.min_timestamp / 86_400_000) as u16;
+        let (expected_roots, _) = Pubkey::find_program_address(
+            &[b"daily_scores_roots", &day.to_le_bytes()],
+            &ctx.accounts.txline_program.key(),
+        );
+        require_keys_eq!(
+            ctx.accounts.daily_scores_merkle_roots.key(),
+            expected_roots,
+            MarketError::RootsMismatch
+        );
+
+        // 3) Finality: only the full-time total (period 100) can settle the match.
+        require!(
+            args.stat_a.stat_to_prove.period == 100,
+            MarketError::NotFinal
+        );
+        if let Some(b) = &args.stat_b {
+            require!(b.stat_to_prove.period == 100, MarketError::NotFinal);
+        }
+
+        // 4) Constrain the proven predicate to the market's canonical question, so the
+        //    caller can only prove the thing this market actually asks (YES-defining).
+        match market_type {
+            MarketType::MatchWinner { team1_key, team2_key } => {
+                // YES <=> team1_goals - team2_goals > 0
+                require!(
+                    args.stat_a.stat_to_prove.key == team1_key as u32
+                        && args.stat_b.as_ref().map(|s| s.stat_to_prove.key)
+                            == Some(team2_key as u32)
+                        && matches!(args.op, Some(BinaryExpression::Subtract))
+                        && args.predicate.threshold == 0
+                        && matches!(args.predicate.comparison, Comparison::GreaterThan),
+                    MarketError::PredicateMismatch
+                );
+            }
+            MarketType::OverUnder { stat_key, threshold } => {
+                // YES <=> stat > threshold
+                require!(
+                    args.stat_a.stat_to_prove.key == stat_key as u32
+                        && args.stat_b.is_none()
+                        && args.op.is_none()
+                        && args.predicate.threshold == threshold as i32
+                        && matches!(args.predicate.comparison, Comparison::GreaterThan),
+                    MarketError::PredicateMismatch
+                );
+            }
+            MarketType::ExactScore { stat_key, target } => {
+                // YES <=> stat == target
+                require!(
+                    args.stat_a.stat_to_prove.key == stat_key as u32
+                        && args.predicate.threshold == target as i32
+                        && matches!(args.predicate.comparison, Comparison::EqualTo),
+                    MarketError::PredicateMismatch
+                );
+            }
+        }
+
+        // 5) CPI to validate_stat. Reverts here if the Merkle proof is invalid.
         let mut data = Vec::with_capacity(1024);
         data.extend_from_slice(&VALIDATE_STAT_DISCRIMINATOR);
         args.serialize(&mut data)?;
-
         let ix = Instruction {
             program_id: ctx.accounts.txline_program.key(),
             accounts: vec![AccountMeta::new_readonly(
@@ -106,7 +168,6 @@ pub mod fulltime {
             )],
             data,
         };
-        // Reverts here if the proof is invalid or the predicate is false.
         invoke(
             &ix,
             &[
@@ -115,8 +176,20 @@ pub mod fulltime {
             ],
         )?;
 
+        // 6) Read validate_stat's verdict (return-data bool) and DERIVE the outcome.
+        //    validate_stat does not revert on a false predicate — it returns 0x00 —
+        //    so we must read it rather than trust the caller.
+        let (ret_program, ret) = anchor_lang::solana_program::program::get_return_data()
+            .ok_or(MarketError::ProofRejected)?;
+        require_keys_eq!(
+            ret_program,
+            ctx.accounts.txline_program.key(),
+            MarketError::ProofRejected
+        );
+        let predicate_true = ret.first() == Some(&1u8);
+
         let m = &mut ctx.accounts.market;
-        m.resolution = Some(outcome);
+        m.resolution = Some(if predicate_true { Outcome::Yes } else { Outcome::No });
         m.state = MarketState::Settled;
         Ok(())
     }
@@ -139,7 +212,11 @@ pub mod fulltime {
         Ok(())
     }
 
-    pub fn claim_winnings(ctx: Context<Claim>, amount: u64) -> Result<()> {
+    /// `_claimed_amount` is intentionally IGNORED — the payout is derived from the
+    /// claimant's own on-chain deposit, never a caller-supplied number. (Trusting a
+    /// caller `amount` let the first winner pass `amount = total_winning` and drain
+    /// the whole vault.) Kept in the signature only for ABI compatibility.
+    pub fn claim_winnings(ctx: Context<Claim>, _claimed_amount: u64) -> Result<()> {
         require!(
             ctx.accounts.market.state == MarketState::Settled,
             MarketError::NotSettled
@@ -163,23 +240,27 @@ pub mod fulltime {
         );
         require!(won, MarketError::Lost);
 
-        let total_winning = if is_yes {
+        // Snapshot pools are frozen once the market is Settled (no more deposits), so
+        // total/winning pools are stable denominators — unlike the live vault balance,
+        // which shrinks as earlier winners claim and would under-pay later ones.
+        let stake = ctx.accounts.deposit.amount;
+        let winning_pool = if is_yes {
             ctx.accounts.market.yes_amount
         } else {
             ctx.accounts.market.no_amount
         };
-        let vault_balance = ctx.accounts.vault.amount;
+        let total_pool = (ctx.accounts.market.yes_amount as u128)
+            .checked_add(ctx.accounts.market.no_amount as u128)
+            .unwrap();
+        require!(winning_pool > 0, MarketError::NoResolution);
 
-        // Pro-rata share of the vault for this claimant's stake.
-        let payout = if total_winning > 0 && vault_balance > 0 {
-            ((vault_balance as u128)
-                .checked_mul(amount as u128)
-                .unwrap()
-                .checked_div(total_winning as u128)
-                .unwrap()) as u64
-        } else {
-            0
-        };
+        // Pro-rata share of the whole pool, floored so summed payouts can never exceed
+        // deposits (dust stays in the vault).
+        let payout = ((stake as u128)
+            .checked_mul(total_pool)
+            .unwrap()
+            .checked_div(winning_pool as u128)
+            .unwrap()) as u64;
 
         if payout > 0 {
             let market_key = ctx.accounts.market.key();
@@ -490,4 +571,14 @@ pub enum MarketError {
     Unauthorized,
     #[msg("Already claimed")]
     AlreadyClaimed,
+    #[msg("Proof is for a different fixture than this market")]
+    FixtureMismatch,
+    #[msg("daily_scores_roots account does not match the proof's day")]
+    RootsMismatch,
+    #[msg("Proof is not the full-time (period 100) result")]
+    NotFinal,
+    #[msg("Proof predicate does not match this market's question")]
+    PredicateMismatch,
+    #[msg("TxLINE rejected the proof (no/invalid verdict)")]
+    ProofRejected,
 }
