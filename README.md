@@ -2,7 +2,17 @@
 
 **Full-Tournament Auto-Market with On-Chain Settlement**
 
-A decentralized prediction market platform for the **2026 World Cup** (104 matches), powered by **TxLINE** data streams and cryptographically verified on-chain settlement via **Solana**.
+A decentralized prediction market platform for the **2026 World Cup**, powered by **TxLINE** data streams and cryptographically verified on-chain settlement via **Solana**.
+
+## Three products, one TxLINE core
+
+All three share the same TxLINE integration (on-chain subscribe → API token → fixtures / scores / odds / proofs):
+
+| Track | Product | Where |
+|---|---|---|
+| **Prediction Markets & Settlement** | On-chain markets settling via a real `validate_stat` CPI | [`SUBMISSION.md`](SUBMISSION.md) · [live](https://fulltime-txline.vercel.app) |
+| **Trading Tools & Agents** | **EdgeBot** — autonomous odds-driven trading agent | [`SUBMISSION-agent.md`](SUBMISSION-agent.md) · [`app/ft-agent.mjs`](app/ft-agent.mjs) |
+| **Consumer & Fan Experiences** | **Fan Zone** — live match center + prediction game | [`SUBMISSION-fan.md`](SUBMISSION-fan.md) · [live](https://fulltime-txline.vercel.app/live) |
 
 ## Architecture
 
