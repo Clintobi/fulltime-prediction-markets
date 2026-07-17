@@ -54,6 +54,12 @@ jobs:
         # and the slow anchor-cli install. Produces target/deploy/fulltime.so.
         run: cargo build-sbf
 
+      - name: Extend program account (upgrades that grew the binary; no-op on first deploy)
+        continue-on-error: true
+        run: |
+          solana program extend 37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW 131072 \
+            --url https://api.devnet.solana.com
+
       - name: Deploy to devnet
         run: |
           solana program deploy target/deploy/fulltime.so \
