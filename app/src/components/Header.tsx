@@ -16,6 +16,10 @@ export function Header() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <nav className="flex items-center gap-4 text-sm">
+            <a href="/" className="text-slate-300 hover:text-white">Markets</a>
+            <a href="/live" className="text-slate-300 hover:text-white">Live</a>
+          </nav>
           <div className="text-xs text-slate-500 hidden sm:block">
             <span className="text-pitch-400 font-mono">TxLINE</span> powered
           </div>
