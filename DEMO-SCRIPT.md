@@ -5,8 +5,11 @@
 **Have ready before recording:**
 - Browser tab: https://fulltime-txline.vercel.app
 - Browser tab: https://explorer.solana.com/address/37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW?cluster=devnet
-- Terminal in `~/fulltime`, with `DEPLOYER_KEYPAIR` pointing at the deployer keypair
-- Editor open to `programs/fulltime/src/lib.rs` (the `settle` fn)
+- Terminal in `~/fulltime`, with `DEPLOYER_KEYPAIR=~/fulltime-keys/deployer.json` and `CREDS=~/fulltime-keys/txline-creds.json`
+- Editor open to `programs/fulltime/src/lib.rs` (the `settle` fn — note it takes no `outcome` arg and reads `get_return_data()`)
+- **Pick fresh fixtures first.** A fixture settles only ONCE (the market goes non-Open), so before recording run `CREDS=~/fulltime-keys/txline-creds.json node app/ft-find-fixtures.mjs` and pick two that show `✅ FRESH`. Use one YES fixture for Scene 4 and one for the tamper in Scene 4b.
+  - Record-now options (teams show as ids): **18179549** (1-0 → YES), **18193785** (1-4 → NO), **18185036** (0-3 → NO).
+  - Best-looking option (real team names): run against **France v England (18257865)** after it finishes Jul 18, or the **final Spain v Argentina (18257739)** after Jul 19 — the finder will show them `✅ FRESH` once played.
 
 ---
 
@@ -24,19 +27,25 @@
 **Do:** run `DEPLOYER_KEYPAIR=… node app/txline-subscribe.mjs` (or show the saved output).
 **Say:** "Access to TxLINE is real. We subscribe *on-chain* to their free World Cup tier, sign, and activate an API token — that's the token the site uses to read live data."
 
-## Scene 4 — On-chain settlement, the core (1:45–2:55)
+## Scene 4 — On-chain settlement, the core (1:45–2:40)
 **Visual:** `programs/fulltime/src/lib.rs`, the `settle` function.
-**Say:** "Here's the heart of it. `settle` builds TxLINE's *real* `validate_stat` instruction — this discriminator and these argument structs come straight from their on-chain IDL — and calls it via CPI. To settle 'France wins', we prove `home_goals − away_goals > 0` against TxLINE's Merkle root. If TxLINE's program doesn't accept the proof, the transaction reverts. The market can only resolve to a result their cryptographic data supports."
-**Do:** run `DEPLOYER_KEYPAIR=… node app/ft-demo.mjs`. Let it stream.
-**Say:** "Watch the whole lifecycle run on devnet: create the market, two users stake USDC on opposite sides — 150 in escrow — settle, then claim."
+**Say:** "Here's the heart of it. `settle` takes *no* outcome argument. It builds TxLINE's real `validate_stat` instruction — discriminator and argument structs straight from their on-chain IDL — CPIs into it, and then reads the **return-data verdict**. The market resolves YES or NO based on what TxLINE's cryptographic proof says — nobody passes in the winner. We also bind the proof to this fixture, re-derive the daily-roots account, require the full-time result, and constrain the predicate to the market's question."
+**Do:** run `DEPLOYER_KEYPAIR=… CREDS=… FIXTURE=<your fresh YES fixture> MODE=real node app/ft-real-settle.mjs`. Let it stream.
+**Say:** "This settles a real finished fixture from TxLINE's finalised proof. Watch: the on-chain resolution comes back **YES**, derived from the verdict. The outcome was not chosen by the caller."
 
-## Scene 5 — Verify it on-chain (2:55–3:35)
-**Visual:** Solana Explorer — open the `create_market`, `settle`, and `claim_winnings` txns from the terminal output.
-**Say:** "Every step is a real transaction. Here's the market created, here's settlement, and here's the winner claiming the pool — their balance went from 1000 to 1050: staked 100, won the 150-USDC pool. Real escrow, real payout, all on-chain."
+## Scene 4b — Settle a lie, get rejected (THE MONEY SHOT) (2:40–3:15)
+**Visual:** terminal.
+**Do:** run the same command with `TAMPER=1` appended.
+**Say:** "Now watch what happens if someone tries to settle a *lie* — I flip one goal in the proof and submit it. TxLINE's program runs the Merkle check… and the transaction **reverts**. You cannot settle an outcome the data doesn't support. That's the whole thesis: settlement as proof, not trust."
 
-## Scene 6 — Wrap (3:35–4:05)
+## Scene 5 — Verify on-chain + drain-proof payouts (3:15–3:50)
+**Visual:** Solana Explorer — open the `settle` txn (valid) and the reverted one.
+**Say:** "Every step is a real transaction — here's the proof-settle, and here's the fraud attempt failing on-chain."
+**Do (optional):** `node app/ft-claim-test.mjs` — "And payouts are pro-rata and drain-proof: a winner can't over-claim, every winner gets their fair share of the pool."
+
+## Scene 6 — Wrap (3:50–4:15)
 **Visual:** back to the app; then the program on Explorer.
-**Say:** "Fulltime proves prediction markets don't need a trusted oracle — just TxLINE's verifiable data and a Solana CPI. Program's deployed, the app is live, and the settlement is backed by TxLINE's real proof mechanism. Links in the description."
+**Say:** "Fulltime proves prediction markets don't need a trusted oracle. Anyone can settle, because the outcome is a cryptographic verdict from TxLINE — and anyone can verify it. Program's deployed, the app is live, settlement is real. Links in the description."
 
 ---
 
