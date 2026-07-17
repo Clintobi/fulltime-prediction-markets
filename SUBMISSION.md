@@ -77,6 +77,30 @@ DEPLOYER_KEYPAIR=deployer.json node app/txline-subscribe.mjs
 DEPLOYER_KEYPAIR=deployer.json node app/ft-demo.mjs
 ```
 
+## TxLINE endpoints used
+
+- `POST /auth/guest/start` — guest JWT.
+- On-chain `subscribe(serviceLevel=1, weeks=4)` on the TxLINE program +
+  `POST /api/token/activate` — API token (`app/txline-subscribe.mjs`).
+- `GET /api/fixtures/snapshot` — World Cup fixtures.
+- `GET /api/scores/snapshot/{id}` · `GET /api/scores/stat-validation` — scores +
+  the Merkle settlement proof consumed by the on-chain `validate_stat` CPI.
+- CPI into TxLINE's on-chain `validate_stat` instruction for trustless settlement.
+
+## TxLINE API feedback
+
+**Liked:** one normalised JSON schema across fixtures/scores/odds made
+integration fast; the on-chain `validate_stat` primitive is a genuinely novel
+settlement mechanism — being able to CPI into it and have the runtime reject an
+invalid proof is exactly what a trustless market needs; the demargined odds book
+returns clean implied probabilities. **Friction:** data access requires an
+on-chain subscribe + `/api/token/activate` handshake before the API returns
+anything (403 "Missing API token" until then — not obvious from a first read);
+the `validate_stat` argument layout (`ScoresBatchSummary` / `StatTerm` /
+`TraderPredicate`) had to be reverse-engineered from the on-chain IDL — a
+copy-pasteable CPI example in the docs would have saved hours; pre-match
+snapshots are transient, so clients must cache and lean on the SSE stream.
+
 ## Roadmap
 
 Permissionless keeper (bot/) auto-settles on `game_finalised`; derive the
