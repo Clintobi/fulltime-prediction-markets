@@ -36,6 +36,18 @@ A complete market lifecycle for **France vs England**, run end to end:
 4. `settle` → YES — [66i8af…](https://explorer.solana.com/tx/66i8afUS4CcV6UNqVEFhGBQUSLgj9JKYUxJNE6p6QLV7rEk4qshmzcMyrZzuGxcUZS2aLXQv39iymyxjhvRqUvYF?cluster=devnet)
 5. `claim_winnings` (winner takes the 150-USDC pool) — [22FbfA…](https://explorer.solana.com/tx/22FbfAUjw5NUTcChZsNcxbjFY66VypBEpCEN6KEQzirVhkYT13sA8xUNGkiWR9teohficcznninAsrh8tm5fa4vB?cluster=devnet)
 
+## Beyond win/lose: parametric prop bets
+
+The same predicate engine settles **prop markets**, not just match winners — the
+program's `MarketType` includes `OverUnder` and `ExactScore`. Demo
+(`app/ft-prop-demo.mjs`): a *"Total goals Over 2.5"* market — OVER 120 vs UNDER 80
+USDC escrowed, resolved OVER on a 3–1 result, backer collected the 200 pool, all
+on-chain ([create](https://explorer.solana.com/tx/5PbNiqC3L7APFUtZLwTFG8YPn9Y6x5G5Sre7VMdASscVEturPptz7BEzivE4weFaXUpkdzrjp3ESvjU4vxUcWVwB?cluster=devnet) ·
+[settle](https://explorer.solana.com/tx/4qTEf8shepsZvn2MMFZm7kYB1xRt2MYRKJtd6xHQMwkPKkXpQecgBmT7VQaXnZGPUue2S9EWU2mr14py9KNxArWP?cluster=devnet) ·
+[claim](https://explorer.solana.com/tx/2w3YtVNVtWz3Jo5ykb3njqNbAKtcGacx4j31CmWjjymJeLzdNuBWF8tzBE3T6MF66wrUhtsPWCi9t8g67eHNMiW5?cluster=devnet)).
+`validate_stat` proves an arbitrary `stat_a [op stat_b] comparison threshold`, so
+"corners > 10" or "shots on target ≥ 5" settle the same trustless way.
+
 ## Real TxLINE integration (not mocked)
 
 We complete TxLINE's actual access flow programmatically (`app/txline-subscribe.mjs`):
