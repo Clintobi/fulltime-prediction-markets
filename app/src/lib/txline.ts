@@ -5,6 +5,11 @@ const DEVNET = {
   apiOrigin: 'https://txline-dev.txodds.com',
   programId: '6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J',
   txlTokenMint: '4Zao8ocPhmMgq7PdsYWyxvqySMGx7xb9cMftPMkEokRG',
+  // Free-tier devnet API token from an on-chain subscribe (serviceLevel 1).
+  // Grants read access to free World Cup / Friendlies devnet data; safe to ship.
+  apiToken:
+    process.env.NEXT_PUBLIC_TXLINE_API_TOKEN ||
+    'txoracle_api_6f0df6e475c04668b9a3a19aa1eefda4',
 }
 
 export type Fixture = {
@@ -63,6 +68,8 @@ export class TxlineClient {
     this.jwt = authRes.data.token
 
     this.http.defaults.headers.common['Authorization'] = `Bearer ${this.jwt}`
+    // The data API also requires the subscription API token on every request.
+    this.setApiToken(DEVNET.apiToken)
     return { jwt: this.jwt, apiToken: this.apiToken || '' }
   }
 

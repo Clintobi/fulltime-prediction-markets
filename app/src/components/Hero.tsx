@@ -10,7 +10,7 @@ export function Hero() {
         <div className="max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pitch-950 border border-pitch-800 text-pitch-300 text-xs mb-6">
             <span className="w-2 h-2 rounded-full bg-pitch-400 animate-pulse" />
-            2026 World Cup — 104 Matches
+            Live on Solana devnet — TxLINE verified
           </div>
 
           <h2 className="text-4xl sm:text-5xl font-bold tracking-tight leading-tight mb-4">
@@ -33,12 +33,12 @@ export function Hero() {
                 Prize Pool
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-pitch-400">104</div>
-                Markets
+                <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-pitch-400">7</div>
+                Live Fixtures
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-pitch-400">4d</div>
-                Until Close
+                <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-pitch-400">CPI</div>
+                TxLINE Settlement
               </div>
             </div>
           </div>

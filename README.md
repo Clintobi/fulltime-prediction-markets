@@ -94,71 +94,64 @@ The `fulltime` Anchor program (`programs/fulltime/src/lib.rs`) implements:
 
 | Instruction | Description |
 |---|---|
-| `create_market` | Initialize a prediction market for a fixture |
-| `deposit_yes` | Stake USDC on "Yes" outcome (e.g., Team A wins) |
-| `deposit_no` | Stake USDC on "No" outcome (e.g., Team B wins) |
-| `settle_market` | Resolve market via CPI to TxLINE's `validateStatV2` |
-| `claim_winnings` | Withdraw USDC after settlement |
+| `create_market` | Initialize a prediction market (PDA) for a fixture + market type |
+| `deposit_yes` / `deposit_no` | Stake USDC (Token-2022) into the market's escrow vault |
+| `settle` | Resolve the market by CPI to TxLINE's real `validate_stat` — reverts unless the Merkle proof + predicate are cryptographically valid |
+| `admin_settle` | Authority-only fallback resolution (used before a fixture has a finalized proof) |
+| `claim_winnings` | Pro-rata payout to the winning side from the escrow vault |
 
-### CPI Integration
+### CPI Integration — the core
 
-The core innovation is the CPI call to TxLINE's `validateStatV2` instruction:
+`settle` builds TxLINE's actual `validate_stat` instruction (discriminator
+`[107,197,232,90,191,136,105,185]` from its on-chain IDL) and invokes it. The
+`ValidateStatArgs` Rust structs mirror TxLINE's IDL exactly, so the Borsh bytes
+are wire-compatible:
 
 ```rust
-invoke(
-    &build_validate_stat_v2_ix(
-        &txline_program.key(),
-        &daily_scores.key(),
-        &proof,
-    ),
-    &[daily_scores.to_account_info()],
-)?;
+let mut data = Vec::with_capacity(1024);
+data.extend_from_slice(&VALIDATE_STAT_DISCRIMINATOR);
+args.serialize(&mut data)?;            // ScoresBatchSummary, StatTerm, TraderPredicate…
+invoke(&Instruction { program_id: txline_program.key(), accounts, data }, &account_infos)?;
+// TxLINE reverts here if the proof is invalid or the predicate is false.
 ```
 
-This proves the match outcome cryptographically — no oracle, no trusted third party.
+A market for "France wins" is settled by proving `home_goals - away_goals > 0`
+against TxLINE's daily-scores Merkle root — no oracle, no trusted third party.
+If TxLINE accepts the proof, the outcome is cryptographically true.
 
-## Keeper Bot
+## Live Demo (all on Solana devnet)
 
-The `bot/` directory contains an autonomous keeper that:
+Full market lifecycle, executed on-chain (`app/ft-demo.mjs`):
 
-1. Connects to TxLINE's SSE scores stream
-2. Detects `action=game_finalised` events (statusId=100, period=100)
-3. Fetches the Merkle proof from `/api/scores/stat-validation`
-4. Calls `settle_market` on-chain
+| Step | Transaction |
+|---|---|
+| create_market (France YES / England NO) | [`48fVsy…`](https://explorer.solana.com/tx/48fVsy4fKFGNsgEpatw69iWb57o1VqosKaSETiZSPeTbnPy4C2o2zGK7AnQaLYb6SantRF1Rr1gqa5KTnjB9BxzD?cluster=devnet) |
+| deposit_yes (100 USDC) | [`3LHf4T…`](https://explorer.solana.com/tx/3LHf4T33rTA6pHEKHFuHG9LVad5XwFLfsB7Lfx2e2tNcmKpWAouV3yzQdHLxV8Hh3aiDoPymnPqGFaKxBQkbQ8Wi?cluster=devnet) |
+| deposit_no (50 USDC) | [`5BqKfM…`](https://explorer.solana.com/tx/5BqKfMfeHywD9g5ppdjjWRB7EaAWXSsFtKmshwR8eSpH5noNQcFo8jpZdeLr94RjmzryGoQnjm32sYKGLwg6CLDw?cluster=devnet) |
+| settle → YES | [`66i8af…`](https://explorer.solana.com/tx/66i8afUS4CcV6UNqVEFhGBQUSLgj9JKYUxJNE6p6QLV7rEk4qshmzcMyrZzuGxcUZS2aLXQv39iymyxjhvRqUvYF?cluster=devnet) |
+| claim_winnings (winner takes the 150 pool) | [`22FbfA…`](https://explorer.solana.com/tx/22FbfAUjw5NUTcChZsNcxbjFY66VypBEpCEN6KEQzirVhkYT13sA8xUNGkiWR9teohficcznninAsrh8tm5fa4vB?cluster=devnet) |
 
-Run it:
+Market PDA `23XyHTV3FWKqVCYptp18jCcZNW3rHdkUvTpN5HJY2SvH` · test USDC mint `8NkH4t1TCXft5m5bvjNHGfjV1N7aG2BfWG6vzKKP8BjD`.
 
-```bash
-BOT_WALLET_SECRET_KEY=<base64-encoded-key> \
-ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
-npm start
-```
+## TxLINE data integration
 
-## Submission
+`app/txline-subscribe.mjs` performs the real access flow: on-chain
+`subscribe(serviceLevel=1, weeks=4)` to TxLINE (free World Cup tier) → sign →
+`POST /api/token/activate` → API token. The live frontend uses that token to
+render real TxLINE fixtures and scores (`app/src/lib/txline.ts`).
 
-### Demo Video
+## Deployed Build
 
-See `demo/` for screen recording assets. The demo covers:
-
-1. **App walkthrough** — browsing 104 World Cup matches with real-time scores
-2. **Making predictions** — connecting wallet, staking USDC on match outcomes
-3. **TxLINE integration** — SSE score streaming, proof fetching
-4. **On-chain settlement** — CPI validation, Merkle proof verification, payout
-
-### Deployed Build
-
-- **Frontend**: `https://fulltime-txline.vercel.app`
+- **Frontend**: https://fulltime-txline.vercel.app
 - **Devnet Program**: `37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW`
 - **TxLINE Program**: `6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J`
 
-### Technical Highlights
+### Redeploy
 
-- **Full 104-match tournament coverage** with auto-generated markets
-- **Real-time SSE score streaming** from TxLINE
-- **Cryptographically verified settlement** via Solana CPI to `validateStatV2`
-- **USDC-based** staking (no TxL token required for users)
-- **Permissionless keeper** — anyone can trigger settlement
-- **Merkle proof receipts** — every settlement is auditable
+CI (`.github/workflows/deploy-devnet.yml`, manual dispatch) builds with
+`cargo build-sbf` and deploys with a pre-funded devnet wallet — no CI airdrop
+dependency. Pinned to Rust 1.75 / lockfile v3 to match Solana 1.18.26
+platform-tools.
 
 ## License
 
