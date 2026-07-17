@@ -76,8 +76,10 @@ function encodeArgs(proof) {
   const statA = statTerm(stats[0], s.eventStatRoot, s.statProofs[0])
   const statB = cat(Buffer.from([1]), statTerm(stats[1], s.eventStatRoot, s.statProofs[1])) // Option::Some
   const op = cat(Buffer.from([1]), Buffer.from([1])) // Option::Some(BinaryExpression::Subtract)
+  // NOTE: the top-level `ts` is the seed-generation timestamp and MUST equal the
+  // snapshot's min_timestamp (validate_stat rejects a mismatch), not proof.ts.
   return cat(
-    i64(s.ts), summary,
+    i64(s.summary.updateStats.minTimestamp), summary,
     vec(s.subTreeProof, proofNode),   // fixture_proof
     vec(s.mainTreeProof, proofNode),  // main_tree_proof
     predicate, statA, statB, op,
@@ -133,9 +135,16 @@ const settleIx = new TransactionInstruction({
 })
 try {
   await send([ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }), settleIx], [agent], 'settle')
-  const m = await conn.getAccountInfo(marketPda)
-  // Market layout: 8 disc + 32 authority + 8 fixture_id + market_type(variant+..) ... resolution near the end.
-  console.log(TAMPER ? '  ⚠️ UNEXPECTED: tampered proof did NOT revert' : '  ✅ settle succeeded — proof validated on-chain')
+  if (TAMPER) { console.log('  ⚠️ UNEXPECTED: tampered proof did NOT revert'); process.exit(1) }
+  // Read the DERIVED resolution from the market account (MatchWinner layout:
+  // state@85, resolution Option tag@102, Outcome@103).
+  const d = (await conn.getAccountInfo(marketPda)).data
+  const settled = d[85] === 1
+  const derived = d[102] === 1 ? (d[103] === 0 ? 0 : 1) : null
+  const ok = settled && derived === expectedOutcome
+  console.log(`  ✅ settle succeeded — on-chain resolution = ${derived === 0 ? 'YES' : derived === 1 ? 'NO' : '(none)'} (expected ${expectedOutcome === 0 ? 'YES' : 'NO'} from real ${proof.statsToProve[0].value}-${proof.statsToProve[1].value})`)
+  console.log(ok ? '  ✅ DERIVED OUTCOME MATCHES THE REAL RESULT — outcome was NOT caller-chosen' : '  ❌ MISMATCH: derived outcome != real result')
+  if (!ok) process.exit(1)
 } catch (e) {
   const msg = (e.transactionLogs || e.logs || []).join('\n') || e.message
   console.log(TAMPER ? '  ✅ EXPECTED: tampered proof reverted (Merkle check failed)' : '  ❌ settle reverted')
