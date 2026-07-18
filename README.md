@@ -98,9 +98,9 @@ The `fulltime` Anchor program (`programs/fulltime/src/lib.rs`) implements:
 |---|---|
 | `create_market` | Initialize a prediction market (PDA) for a fixture + market type |
 | `deposit_yes` / `deposit_no` | Stake USDC (Token-2022) into the market's escrow vault |
-| `settle` | Resolve the market by CPI to TxLINE's real `validate_stat` — reverts unless the Merkle proof + predicate are cryptographically valid |
-| `admin_settle` | Authority-only fallback resolution (used before a fixture has a finalized proof) |
+| `settle` | Resolve the market by CPI to TxLINE's real `validate_stat` (oracle pinned on-chain) — reverts unless the Merkle proof + predicate are cryptographically valid. **No admin override exists.** |
 | `claim_winnings` | Pro-rata payout to the winning side from the escrow vault |
+| `create_parlay` / `prove_leg` / `claim_parlay` | Multi-leg tickets: each leg proven through the same pinned `validate_stat` CPI; all legs must hit to win |
 
 ### CPI Integration — the core
 
