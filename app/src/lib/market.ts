@@ -65,13 +65,33 @@ export async function readDeposit(conn: Connection, user: PublicKey): Promise<De
 }
 
 // --- transactions (each returns extra signers to pass to wallet sendTransaction) ---
-export function faucetTx(user: PublicKey): { tx: Transaction; signers: Keypair[] } {
+
+// Faucet is signed ENTIRELY by the devnet faucet keypair (fee payer + mint authority),
+// so the user's wallet is never a signer — no Phantom "unexpected signer" warning, no
+// popup, and the app controls the tx (re-broadcasts through the flaky public RPC).
+export async function sendFaucet(connection: Connection, user: PublicKey): Promise<string> {
   const ata = userAta(user)
   const tx = new Transaction().add(
-    createAssociatedTokenAccountIdempotentInstruction(user, ata, user, MINT, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 300_000 }),
+    createAssociatedTokenAccountIdempotentInstruction(FAUCET.publicKey, ata, user, MINT, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
     createMintToInstruction(MINT, ata, FAUCET.publicKey, 1_000_000000, [], TOKEN_2022_PROGRAM_ID),
   )
-  return { tx, signers: [FAUCET] }                          // devnet test-USDC mint authority co-signs
+  const latest = await connection.getLatestBlockhash('confirmed')
+  tx.feePayer = FAUCET.publicKey
+  tx.recentBlockhash = latest.blockhash
+  tx.sign(FAUCET)
+  const raw = tx.serialize()
+  const sig = await connection.sendRawTransaction(raw, { maxRetries: 3 })
+  for (;;) {
+    await new Promise(r => setTimeout(r, 2000))
+    const st = await connection.getSignatureStatus(sig)
+    if (st.value?.err) throw new Error('faucet reverted: ' + JSON.stringify(st.value.err))
+    const cs = st.value?.confirmationStatus
+    if (cs === 'confirmed' || cs === 'finalized') return sig
+    if ((await connection.getBlockHeight('confirmed')) > latest.lastValidBlockHeight)
+      throw new Error('faucet not confirmed — devnet RPC is dropping it; retry or set NEXT_PUBLIC_RPC')
+    try { await connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 2 }) } catch {}
+  }
 }
 
 export function depositTx(user: PublicKey, side: 'YES' | 'NO', amount: number): { tx: Transaction; signers: Keypair[] } {

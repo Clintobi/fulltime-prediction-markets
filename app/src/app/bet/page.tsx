@@ -7,7 +7,7 @@ import { ComputeBudgetProgram } from '@solana/web3.js'
 import { Header } from '@/components/Header'
 import {
   DEMO, MARKET, readMarket, usdcBalance, readDeposit,
-  faucetTx, depositTx, settleTx, claimTx, type MarketState, type Deposit,
+  sendFaucet, depositTx, settleTx, claimTx, type MarketState, type Deposit,
 } from '@/lib/market'
 
 const EX = (s: string) => `https://explorer.solana.com/tx/${s}?cluster=devnet`
@@ -75,6 +75,18 @@ export default function BetPage() {
     } finally { setBusy(null) }
   }
 
+  async function doFaucet() {
+    if (!publicKey) return
+    setBusy('Faucet'); setMsg(null)
+    try {
+      const sig = await sendFaucet(connection, publicKey)   // app-signed; no wallet popup
+      setMsg({ text: 'Faucet confirmed — 1,000 test-USDC', sig })
+      await refresh()
+    } catch (e: any) {
+      setMsg({ text: `Faucet failed: ${e?.message || e}`, err: true })
+    } finally { setBusy(null) }
+  }
+
   const total = mkt ? mkt.yes + mkt.no : 0
   const yesPct = total ? Math.round((mkt!.yes / total) * 100) : 50
   const won = dep && mkt?.resolution && ((mkt.resolution === 'YES') === dep.isYes)
@@ -136,7 +148,7 @@ export default function BetPage() {
               <span className="text-slate-400">your test-USDC</span>
               <span className="font-mono">{fmt(bal)} USDC</span>
             </div>
-            <button onClick={() => run('Faucet', () => faucetTx(publicKey))} disabled={!!busy}
+            <button onClick={doFaucet} disabled={!!busy}
               className="w-full py-2.5 rounded-lg border border-slate-700 hover:border-pitch-600 text-sm disabled:opacity-50">
               {busy === 'Faucet' ? 'Minting…' : 'Get 1,000 test-USDC'}
             </button>
