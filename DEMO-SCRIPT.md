@@ -59,5 +59,5 @@ to point `/bet` at a fresh market (the 17588xxx fixtures lack full-time proofs �
 
 ## Production notes
 - Mute notifications; clean terminal; use a readable code font.
-- The `ft-demo.mjs` run currently uses `admin_settle` (the fallback) because the showcase matches settle in the hackathon window; if a real match proof has published, swap in the genuine proof-driven `settle` txn here — it's the strongest 15 seconds in the video.
+- Settlement is trustless-only — `admin_settle` has been removed from the program. The strongest 15 seconds of the video is the genuine proof-driven `settle`: run `MODE=real FIXTURE=<fresh-finished-id> node app/ft-real-settle.mjs` on a fixture the finder shows `✅ FRESH`, and show the inner `validate_stat` CPI + "DERIVED OUTCOME MATCHES THE REAL RESULT". If no fresh proof is available at record time, screen-show the two already-settled txs from `VERIFY.md` (18179549 → YES, 18193785 → NO) and their inner-CPI logs on Explorer.
 - Keep it fast; no dead air.
