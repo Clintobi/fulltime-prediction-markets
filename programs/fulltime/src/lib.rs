@@ -194,24 +194,6 @@ pub mod fulltime {
         Ok(())
     }
 
-    /// Fallback settlement by the market authority (no proof). Used for demo /
-    /// contingency when TxLINE has not yet published a finalized proof for the
-    /// fixture. Restricted to the market authority.
-    pub fn admin_settle(ctx: Context<AdminSettle>, outcome: Outcome) -> Result<()> {
-        require!(
-            ctx.accounts.authority.key() == ctx.accounts.market.authority,
-            MarketError::Unauthorized
-        );
-        require!(
-            ctx.accounts.market.state == MarketState::Open,
-            MarketError::NotOpen
-        );
-        let m = &mut ctx.accounts.market;
-        m.resolution = Some(outcome);
-        m.state = MarketState::Settled;
-        Ok(())
-    }
-
     /// `_claimed_amount` is intentionally IGNORED — the payout is derived from the
     /// claimant's own on-chain deposit, never a caller-supplied number. (Trusting a
     /// caller `amount` let the first winner pass `amount = total_winning` and drain
@@ -504,14 +486,6 @@ pub struct Settle<'info> {
 
     /// CHECK: TxLINE daily_scores_merkle_roots PDA (validated by TxLINE)
     pub daily_scores_merkle_roots: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct AdminSettle<'info> {
-    #[account(mut)]
-    pub market: Account<'info, Market>,
-
-    pub authority: Signer<'info>,
 }
 
 #[derive(Accounts)]

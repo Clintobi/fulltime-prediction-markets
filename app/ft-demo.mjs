@@ -13,6 +13,15 @@ import {
 import { createHash } from 'crypto'
 import fs from 'fs'
 
+// NOTE: admin_settle was REMOVED — settlement is trustless-only (the validate_stat proof CPI).
+// This helper previously force-settled via admin_settle to exercise claim/payout locally.
+// For real settlement use app/ft-real-settle.mjs. Set FORCE_LEGACY=1 to run the old body anyway.
+if (!process.env.FORCE_LEGACY) {
+  console.log('[deprecated] admin_settle removed — settlement is trustless-only.');
+  console.log('Use:  MODE=real FIXTURE=<finished-fixture-id> node app/ft-real-settle.mjs');
+  process.exit(0);
+}
+
 const RPC = 'https://api.devnet.solana.com'
 const PROGRAM = new PublicKey('37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW')
 const conn = new Connection(RPC, 'confirmed')

@@ -69,3 +69,15 @@ CREDS=… DEPLOYER_KEYPAIR=… MODE=real TAMPER=1 FIXTURE=<fresh-id> node ft-rea
 ```
 
 You cannot settle to a result TxLINE's data doesn't support. That is the whole point.
+
+## Automated test
+
+`app/ft-e2e-test.mjs` (`cd app && npm run test:e2e`) re-verifies both recorded
+settlements against live devnet — asserting each tx CPI'd TxLINE's `validate_stat`
+and that the market's on-chain resolution matches the real scoreline (not a
+caller-chosen value). With `CREDS` + `DEPLOYER_KEYPAIR` + a fresh `FIXTURE` it also
+runs the live settle and the tamper-reverts path as assertions.
+
+> Note: settlement is **trustless-only** — there is no `admin_settle` / owner
+> override in the program. The market can reach `Settled` solely through a valid
+> TxLINE proof.
