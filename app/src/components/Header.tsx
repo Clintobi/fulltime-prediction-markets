@@ -16,6 +16,9 @@ export function Header() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <a href="/verify" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
+            Verify
+          </a>
           <a href="/bet" className="text-xs font-semibold text-pitch-300 hover:text-pitch-200 border border-pitch-800 rounded-lg px-3 py-2">
             Place a bet →
           </a>
