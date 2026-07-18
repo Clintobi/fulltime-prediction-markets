@@ -13,6 +13,18 @@ with the most rigorous, most verifiable settlement wins. Play to that.
 > don't have to take my word for it: here are two real settlements you can verify, a
 > proof-visualizer, and a test suite that runs TxLINE's actual binary."
 
+## The moat, in one line (research-backed)
+
+Polymarket resolves through UMA's optimistic oracle — a $750 bond, a ~2h dispute
+window, and, if challenged, a 48–72h token vote. Azuro resolves via elected data
+providers with a DAO as arbiter of last resort. Even the *frontier* — UMA ×
+Polymarket × EigenLayer's "next-gen oracle" — is still restaking-secured economic
+security + token voting. **Every leader settles by trust. Fulltime settles by proof
+— no bond, no dispute window, no vote, no admin.** (And I know the honest bound: our
+proof binds the outcome to TxLINE's anchored data, not the truth of that data — which
+is why it's the right tool for *objective* final stats, and why the mitigation is
+multi-attestor/staked data, not a claim of "trustless data.")
+
 ## The core, in one breath (what `settle` enforces — programs/fulltime/src/lib.rs)
 
 1. **Fixture-bound** — the proof must be for *this* market's fixture.
