@@ -19,6 +19,9 @@ export function Header() {
           <a href="/markets" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
             Markets
           </a>
+          <a href="/parlay" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
+            Parlays
+          </a>
           <a href="/verify" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
             Verify
           </a>
