@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
+import { ComputeBudgetProgram } from '@solana/web3.js'
 import { Header } from '@/components/Header'
 import {
   DEMO, MARKET, readMarket, usdcBalance, readDeposit,
@@ -14,7 +15,7 @@ const fmt = (n: number) => (n / 1e6).toLocaleString(undefined, { maximumFraction
 
 export default function BetPage() {
   const { connection } = useConnection()
-  const { publicKey, sendTransaction } = useWallet()
+  const { publicKey, sendTransaction, signTransaction } = useWallet()
   const [mkt, setMkt] = useState<MarketState | null>(null)
   const [bal, setBal] = useState(0)
   const [dep, setDep] = useState<Deposit | null>(null)
@@ -35,8 +36,28 @@ export default function BetPage() {
     setBusy(label); setMsg(null)
     try {
       const { tx, signers } = await build()
-      const sig = await sendTransaction(tx, connection, { signers })
-      await connection.confirmTransaction(sig, 'confirmed')
+      // Priority fee so the public devnet RPC actually includes the tx (fee-less txs
+      // get dropped under load), a fresh blockhash, and the blockhash-based confirm
+      // (the old 30s signature poll times out even on success).
+      tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 300_000 }))
+      const latest = await connection.getLatestBlockhash('confirmed')
+      tx.feePayer = publicKey
+      tx.recentBlockhash = latest.blockhash
+      // Sign explicitly (co-signers first, then the wallet) and submit the raw tx, so
+      // an extra signer's signature can't be invalidated by a blockhash re-fetch.
+      if (signers.length) tx.partialSign(...signers)
+      let sig: string
+      if (signTransaction) {
+        const signed = await signTransaction(tx)
+        sig = await connection.sendRawTransaction(signed.serialize(), { maxRetries: 6 })
+      } else {
+        sig = await sendTransaction(tx, connection, { signers, maxRetries: 6 })
+      }
+      const res = await connection.confirmTransaction(
+        { signature: sig, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
+        'confirmed',
+      )
+      if (res.value.err) throw new Error('reverted on-chain: ' + JSON.stringify(res.value.err))
       setMsg({ text: `${label} confirmed`, sig })
       await refresh()
     } catch (e: any) {

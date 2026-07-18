@@ -7,7 +7,9 @@ import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adap
 import '@solana/wallet-adapter-react-ui/styles.css'
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const endpoint = useMemo(() => 'https://api.devnet.solana.com', [])
+  // Public devnet RPC by default; set NEXT_PUBLIC_RPC in Vercel to a dedicated
+  // devnet endpoint (Helius/QuickNode/Alchemy) for materially more reliable inclusion.
+  const endpoint = useMemo(() => process.env.NEXT_PUBLIC_RPC || 'https://api.devnet.solana.com', [])
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
     []
