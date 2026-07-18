@@ -27,8 +27,11 @@ export function Hero() {
             <a href="/bet" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-pitch-600 hover:bg-pitch-500 text-white text-sm font-semibold transition-colors">
               Place a bet on devnet →
             </a>
+            <a href="/verify" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-700 hover:border-slate-500 text-sm text-slate-300 transition-colors">
+              Verify a settlement →
+            </a>
             <a href="https://explorer.solana.com/address/37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW?cluster=devnet" target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-700 hover:border-slate-500 text-sm text-slate-300 transition-colors font-mono">
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-800 hover:border-slate-600 text-sm text-slate-400 transition-colors font-mono">
               37Gjug…9vTW ↗
             </a>
           </div>
