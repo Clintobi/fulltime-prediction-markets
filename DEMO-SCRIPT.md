@@ -27,6 +27,14 @@
 **Do:** run `DEPLOYER_KEYPAIR=… node app/txline-subscribe.mjs` (or show the saved output).
 **Say:** "Access to TxLINE is real. We subscribe *on-chain* to their free World Cup tier, sign, and activate an API token — that's the token the site uses to read live data."
 
+## Scene 3.5 — A judge bets in the browser (INTERACTIVE) (1:20–2:00)
+**Visual:** https://fulltime-txline.vercel.app/bet (reset it first — see below).
+**Do:** connect a devnet wallet → "Get 1,000 test-USDC" → type an amount → "Bet YES/NO" (the pool bar moves) → "Settle from TxLINE proof" → "Claim".
+**Say:** "A judge doesn't have to take our word for it — connect a devnet wallet, grab test-USDC, and place a real bet. Then anyone clicks Settle: the app fetches TxLINE's proof, and the winner is decided on-chain by the CPI, not by us. The winner claims their share. Bet to payout, entirely in the browser."
+**⚠ Reset before recording:** a fixture settles once. Run
+`FIXTURE=<a fresh 181xxxxx fixture, e.g. 18193785> node app/create-demo-market.mjs`
+to point `/bet` at a fresh market (the 17588xxx fixtures lack full-time proofs — use 181xxxxx).
+
 ## Scene 4 — On-chain settlement, the core (1:45–2:40)
 **Visual:** `programs/fulltime/src/lib.rs`, the `settle` function.
 **Say:** "Here's the heart of it. `settle` takes *no* outcome argument. It builds TxLINE's real `validate_stat` instruction — discriminator and argument structs straight from their on-chain IDL — CPIs into it, and then reads the **return-data verdict**. The market resolves YES or NO based on what TxLINE's cryptographic proof says — nobody passes in the winner. We also bind the proof to this fixture, re-derive the daily-roots account, require the full-time result, and constrain the predicate to the market's question."
