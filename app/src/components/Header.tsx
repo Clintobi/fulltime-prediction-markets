@@ -16,6 +16,9 @@ export function Header() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <a href="/markets" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
+            Markets
+          </a>
           <a href="/verify" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
             Verify
           </a>
