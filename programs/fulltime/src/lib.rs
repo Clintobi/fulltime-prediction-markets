@@ -855,10 +855,13 @@ pub struct ProveLeg<'info> {
 
     pub settler: Signer<'info>,
 
-    /// CHECK: CPI target — TxLINE oracle program
+    /// CHECK: CPI target — pinned to the REAL TxLINE oracle on-chain (same guarantee as `Settle`):
+    /// a parlay leg can't be "proved" against a substituted fake oracle.
+    #[account(address = TXLINE_PROGRAM)]
     pub txline_program: UncheckedAccount<'info>,
 
-    /// CHECK: TxLINE daily_scores_merkle_roots PDA (validated by TxLINE)
+    /// CHECK: TxLINE daily_scores_merkle_roots PDA — must be OWNED by the real TxLINE program.
+    #[account(owner = TXLINE_PROGRAM)]
     pub daily_scores_merkle_roots: UncheckedAccount<'info>,
 }
 
