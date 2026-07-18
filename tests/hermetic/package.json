@@ -1,0 +1,19 @@
+{
+  "name": "fulltime-hermetic-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hermetic, deterministic LiteSVM test suite for the Fulltime Solana program \u2014 loads the REAL TxLINE oracle binary + REAL on-chain roots + a REAL finalised proof.",
+  "scripts": {
+    "dump": "node dump-artifacts.mjs",
+    "test": "node --test settle.test.mjs",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.8",
+    "litesvm": "^0.3.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.9"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "dumpedAt": "2026-07-18T14:51:52.774Z",
+  "rpc": "https://api.devnet.solana.com",
+  "txlineSo": {
+    "file": "txline.so",
+    "bytes": 1036016,
+    "address": "6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J"
+  },
+  "fulltimeSo": {
+    "file": "fulltime.so",
+    "bytes": 727048,
+    "address": "37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW"
+  },
+  "roots": {
+    "file": "roots.json",
+    "pubkey": "DjE6qSDHJEUwbXXTV5v1YSQpzfsWcRsARbWqLqR3KoSA",
+    "bytes": 9232
+  },
+  "proof": {
+    "file": "proof.json",
+    "fixtureId": 18179549,
+    "score": "1-0",
+    "outcome": "Yes"
+  }
+}
