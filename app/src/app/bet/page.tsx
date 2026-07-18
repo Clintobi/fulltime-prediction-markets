@@ -56,7 +56,7 @@ export default function BetPage() {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pitch-950 border border-pitch-800 text-pitch-300 text-xs mb-4">
             <span className="w-2 h-2 rounded-full bg-pitch-400" /> Devnet · real on-chain market
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Place a bet, then settle it from a proof</h1>
+          <h1 className="font-display text-3xl font-bold tracking-[-0.03em]">Place a bet, then settle it from a proof</h1>
           <p className="text-sm text-slate-400 mt-2">
             A real market on a finished World Cup fixture. Get test-USDC, stake YES or NO, then
             settle it trustlessly from TxLINE&apos;s on-chain proof and claim. No outcome is ever entered by hand.
@@ -69,8 +69,8 @@ export default function BetPage() {
             <span className="text-xs text-slate-500">TxLINE fixture {DEMO.fixtureId}</span>
             <a href={`https://explorer.solana.com/address/${MARKET.toBase58()}?cluster=devnet`} target="_blank" rel="noreferrer" className="text-xs text-pitch-400 hover:underline font-mono">market ↗</a>
           </div>
-          <div className="text-lg font-semibold mb-4">{DEMO.home} <span className="text-slate-600">vs</span> {DEMO.away}
-            <span className="text-xs font-normal text-slate-500 ml-2">real full-time: {DEMO.realResult.g1}–{DEMO.realResult.g2}</span>
+          <div className="font-display text-xl font-semibold mb-4">{DEMO.home} <span className="text-slate-600 font-sans">vs</span> {DEMO.away}
+            <span className="text-xs font-normal text-slate-500 ml-2 font-mono">FT {DEMO.realResult.g1}–{DEMO.realResult.g2}</span>
           </div>
 
           {/* pool bar */}
@@ -82,7 +82,7 @@ export default function BetPage() {
             <div className="bg-pitch-500" style={{ width: `${yesPct}%` }} />
             <div className="bg-slate-600" style={{ width: `${100 - yesPct}%` }} />
           </div>
-          <div className="flex justify-between text-[11px] text-slate-500">
+          <div className="flex justify-between text-[11px] text-slate-500 font-mono">
             <span>{mkt ? fmt(mkt.yes) : '—'} USDC</span>
             <span>{mkt ? fmt(mkt.no) : '—'} USDC</span>
           </div>

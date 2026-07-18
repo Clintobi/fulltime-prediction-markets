@@ -3,44 +3,47 @@
 export function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-slate-800">
-      <div className="absolute inset-0 bg-gradient-to-b from-pitch-950/40 via-transparent to-transparent" />
-      <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-pitch-900/10 to-transparent" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_80%_-10%,rgba(34,197,94,.08),transparent_60%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(90%_60%_at_0%_0%,rgba(90,120,255,.04),transparent_55%)]" />
 
-      <div className="max-w-7xl mx-auto px-4 py-16 sm:py-24 relative">
+      <div className="max-w-5xl mx-auto px-4 py-20 sm:py-28 relative">
         <div className="max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pitch-950 border border-pitch-800 text-pitch-300 text-xs mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pitch-950 border border-pitch-800 text-pitch-300 text-xs mb-6 font-mono">
             <span className="w-2 h-2 rounded-full bg-pitch-400 animate-pulse" />
-            Live on Solana devnet — TxLINE verified
+            Live on Solana devnet · settled by TxLINE proof
           </div>
 
-          <h2 className="text-4xl sm:text-5xl font-bold tracking-tight leading-tight mb-4">
-            Predict Every Match.{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-pitch-300 to-pitch-500">
-              Settle On-Chain.
-            </span>
+          <h2 className="font-display text-4xl sm:text-6xl font-bold tracking-[-0.035em] leading-[1.02] mb-5 text-balance">
+            The market that settles itself.
           </h2>
 
-          <p className="text-lg text-slate-400 leading-relaxed mb-8">
-            Decentralized prediction markets for the entire World Cup tournament.
-            Stake USDC, make predictions, and settle automatically via
-            cryptographically verified TxLINE data — no oracle, no trust.
+          <p className="text-lg text-slate-400 leading-relaxed mb-8 max-w-xl text-pretty">
+            Stake USDC on a World Cup result, then let <span className="text-slate-200">anyone settle it</span> — the
+            winner is derived on-chain from TxLINE&apos;s cryptographic proof, not an oracle you have to trust. A
+            tampered proof reverts.
           </p>
 
-          <div className="flex flex-wrap gap-4">
-            <div className="flex items-center gap-6 text-sm text-slate-500">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-pitch-400">18k</div>
-                Prize Pool
+          <div className="flex flex-wrap items-center gap-3">
+            <a href="/bet" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-pitch-600 hover:bg-pitch-500 text-white text-sm font-semibold transition-colors">
+              Place a bet on devnet →
+            </a>
+            <a href="https://explorer.solana.com/address/37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW?cluster=devnet" target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-700 hover:border-slate-500 text-sm text-slate-300 transition-colors font-mono">
+              37Gjug…9vTW ↗
+            </a>
+          </div>
+
+          <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+            {[
+              ['Trustless', 'outcome from a proof, not a signer'],
+              ['Permissionless', 'anyone settles, anyone verifies'],
+              ['On-chain escrow', 'pro-rata payouts, drain-proof'],
+            ].map(([k, v]) => (
+              <div key={k} className="flex flex-col">
+                <span className="font-display font-semibold text-pitch-300">{k}</span>
+                <span className="text-slate-500 text-xs">{v}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-pitch-400">7</div>
-                Live Fixtures
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-pitch-400">CPI</div>
-                TxLINE Settlement
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
