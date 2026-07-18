@@ -248,3 +248,34 @@ test('DETERMINISM: two independent settlements of the real proof both derive YES
     assert.equal(Buffer.from(svm.getAccount(marketPda(FIX)).data)[103], 0, 'YES')
   }
 })
+
+// --- oracle-pin attack (added after pinning txline_program to the real oracle) ---
+
+import { Keypair as _Kp } from '@solana/web3.js'
+
+test('ATTACK: fake oracle at the txline_program slot -> rejected by the address pin', () => {
+  const { svm, payer } = freshSvm()
+  send(svm, payer, [createMarketIx(payer, FIX, T1, T2)])
+  const fakeOracle = _Kp.generate().publicKey // NOT the real 6pW64… oracle
+  const ix = new TransactionInstruction({
+    programId: FULLTIME, data: cat(disc('settle'), encodeArgs(proof.raw)),
+    keys: [
+      { pubkey: marketPda(FIX), isSigner: false, isWritable: true },
+      { pubkey: payer.publicKey, isSigner: true, isWritable: false },
+      { pubkey: fakeOracle, isSigner: false, isWritable: false }, // pinned -> must fail
+      { pubkey: realRoots, isSigner: false, isWritable: false },
+    ],
+  })
+  const res = send(svm, payer, [ix])
+  assert.ok(failed(res), 'a non-canonical program at the txline_program slot must be rejected before any CPI')
+})
+
+test('ATTACK: roots account not owned by the real oracle -> rejected by the owner pin', () => {
+  const { svm, payer } = freshSvm()
+  send(svm, payer, [createMarketIx(payer, FIX, T1, T2)])
+  // a roots-shaped account at the CORRECT PDA but owned by someone else
+  const impostor = _Kp.generate().publicKey
+  svm.setAccount(realRoots, { lamports: 1_000_000_000, data: new Uint8Array(64), owner: impostor, executable: false, rentEpoch: 0 })
+  const res = send(svm, payer, [settleIx(payer, FIX, encodeArgs(proof.raw), realRoots)])
+  assert.ok(failed(res), 'a roots account not owned by the real TxLINE program must be rejected')
+})

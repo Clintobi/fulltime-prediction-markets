@@ -1,5 +1,5 @@
 {
-  "dumpedAt": "2026-07-18T14:51:52.774Z",
+  "dumpedAt": "2026-07-18T16:10:56.661Z",
   "rpc": "https://api.devnet.solana.com",
   "txlineSo": {
     "file": "txline.so",
@@ -8,7 +8,7 @@
   },
   "fulltimeSo": {
     "file": "fulltime.so",
-    "bytes": 727048,
+    "bytes": 989192,
     "address": "37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW"
   },
   "roots": {
