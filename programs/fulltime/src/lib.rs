@@ -10,6 +10,15 @@ declare_id!("37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW");
 /// Discriminator of TxLINE's `validate_stat` instruction (from its on-chain IDL).
 const VALIDATE_STAT_DISCRIMINATOR: [u8; 8] = [107, 197, 232, 90, 191, 136, 105, 185];
 
+/// The one and only TxLINE oracle program. Pinning this on-chain is what makes settlement
+/// actually TRUSTLESS: without it, a settler could pass a fake program that returns a chosen
+/// verdict and resolve any market at will. With it, `settle` can only ever CPI the real oracle.
+// 6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J decoded to raw bytes (const, no macro dep).
+const TXLINE_PROGRAM: Pubkey = Pubkey::new_from_array([
+    86, 117, 159, 44, 144, 95, 120, 96, 200, 99, 119, 20, 191, 36, 145, 48,
+    157, 192, 113, 129, 81, 63, 122, 36, 191, 62, 218, 248, 127, 119, 80, 3,
+]);
+
 #[program]
 pub mod fulltime {
     use super::*;
@@ -269,6 +278,181 @@ pub mod fulltime {
         ctx.accounts.deposit.claimed = true;
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // Parlays — a multi-leg ticket that resolves TRUSTLESSLY: every leg must be
+    // proven, via the SAME validate_stat CPI, to hit its prediction. One miss and
+    // the ticket is dead. Payout is stake × (per-leg odds)^legs from a protocol
+    // reward vault that losing tickets replenish. The proven `settle` path above is
+    // untouched — these are additive instructions.
+    // -----------------------------------------------------------------------
+
+    pub fn init_parlay_config(ctx: Context<InitParlayConfig>, leg_odds_bps: u16) -> Result<()> {
+        require!(leg_odds_bps >= 10_000, MarketError::BadOdds); // >= 1.00x per leg
+        let c = &mut ctx.accounts.config;
+        c.authority = ctx.accounts.authority.key();
+        c.mint = ctx.accounts.mint.key();
+        c.leg_odds_bps = leg_odds_bps;
+        c.bump = ctx.bumps.config;
+        Ok(())
+    }
+
+    pub fn create_parlay(ctx: Context<CreateParlay>, _nonce: u64, legs: Vec<Leg>, stake: u64) -> Result<()> {
+        require!(!legs.is_empty() && legs.len() <= MAX_LEGS, MarketError::BadLegs);
+        require!(stake > 0, MarketError::BadLegs);
+        // Escrow the stake into the reward vault. Losing tickets leave their stake
+        // here (funding winners); winners are paid stake × odds^legs from it.
+        let decimals = ctx.accounts.mint.decimals;
+        token_interface::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.user_token.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.reward_vault.to_account_info(),
+                    authority: ctx.accounts.owner.to_account_info(),
+                },
+            ),
+            stake,
+            decimals,
+        )?;
+        let p = &mut ctx.accounts.parlay;
+        p.owner = ctx.accounts.owner.key();
+        p.nonce = _nonce;
+        p.stake = stake;
+        p.num_legs = legs.len() as u8;
+        p.legs = legs;
+        p.proven_mask = 0;
+        p.status = ParlayStatus::Pending as u8;
+        p.bump = ctx.bumps.parlay;
+        Ok(())
+    }
+
+    /// Permissionless — anyone can prove a leg with a real TxLINE proof. The leg's
+    /// outcome is DERIVED on-chain (same gates as `settle`); if it doesn't match the
+    /// ticket's prediction the whole parlay loses, else the leg is marked and, once
+    /// every leg is proven, the parlay wins.
+    pub fn prove_leg(ctx: Context<ProveLeg>, leg_index: u8, args: ValidateStatArgs) -> Result<()> {
+        require!(ctx.accounts.parlay.status == ParlayStatus::Pending as u8, MarketError::ParlayClosed);
+        let i = leg_index as usize;
+        require!(i < ctx.accounts.parlay.num_legs as usize, MarketError::BadLegs);
+        require!(ctx.accounts.parlay.proven_mask & (1u16 << i) == 0, MarketError::AlreadyClaimed);
+        let leg = ctx.accounts.parlay.legs[i];
+        let actual_yes = derive_outcome_from_proof(
+            &ctx.accounts.txline_program.to_account_info(),
+            &ctx.accounts.daily_scores_merkle_roots.to_account_info(),
+            &args,
+            leg.fixture_id,
+            leg.kind,
+            leg.k1,
+            leg.k2,
+            leg.threshold,
+        )?;
+        let p = &mut ctx.accounts.parlay;
+        if actual_yes != leg.predicted_yes {
+            p.status = ParlayStatus::Lost as u8;
+        } else {
+            p.proven_mask |= 1u16 << i;
+            let all = (1u16 << p.num_legs) - 1;
+            if p.proven_mask == all {
+                p.status = ParlayStatus::Won as u8;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn claim_parlay(ctx: Context<ClaimParlay>) -> Result<()> {
+        require!(ctx.accounts.parlay.status == ParlayStatus::Won as u8, MarketError::ParlayNotWon);
+        // payout = stake × (odds_bps / 10000)^num_legs, floored each step (never over-pays).
+        let mut payout: u128 = ctx.accounts.parlay.stake as u128;
+        let bps = ctx.accounts.config.leg_odds_bps as u128;
+        for _ in 0..ctx.accounts.parlay.num_legs {
+            payout = payout.checked_mul(bps).unwrap().checked_div(10_000).unwrap();
+        }
+        let payout = payout as u64;
+        let decimals = ctx.accounts.mint.decimals;
+        let bump = ctx.bumps.vault_authority;
+        let seeds: &[&[u8]] = &[b"parlay_vault", &[bump]];
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.reward_vault.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.user_token.to_account_info(),
+                    authority: ctx.accounts.vault_authority.to_account_info(),
+                },
+                &[seeds],
+            ),
+            payout,
+            decimals,
+        )?;
+        ctx.accounts.parlay.status = ParlayStatus::Claimed as u8;
+        Ok(())
+    }
+}
+
+/// Validate a TxLINE proof against a specific fixture + predicate and DERIVE the
+/// YES/NO outcome from validate_stat's verdict. Same gates as `settle` (fixture
+/// bind, in-program roots-PDA re-derivation, period-100 finality, predicate↔question
+/// binding, verdict read with ret_program check) — used by the parlay leg prover.
+fn derive_outcome_from_proof<'info>(
+    txline_program: &AccountInfo<'info>,
+    daily_scores_merkle_roots: &AccountInfo<'info>,
+    args: &ValidateStatArgs,
+    fixture_id: u64,
+    kind: u8,
+    k1: u16,
+    k2: u16,
+    threshold: u64,
+) -> Result<bool> {
+    require!(args.fixture_summary.fixture_id == fixture_id as i64, MarketError::FixtureMismatch);
+    let day = (args.fixture_summary.update_stats.min_timestamp / 86_400_000) as u16;
+    let (expected_roots, _) =
+        Pubkey::find_program_address(&[b"daily_scores_roots", &day.to_le_bytes()], &txline_program.key());
+    require_keys_eq!(daily_scores_merkle_roots.key(), expected_roots, MarketError::RootsMismatch);
+    require!(args.stat_a.stat_to_prove.period == 100, MarketError::NotFinal);
+    if let Some(b) = &args.stat_b {
+        require!(b.stat_to_prove.period == 100, MarketError::NotFinal);
+    }
+    match kind {
+        0 => require!(
+            args.stat_a.stat_to_prove.key == k1 as u32
+                && args.stat_b.as_ref().map(|s| s.stat_to_prove.key) == Some(k2 as u32)
+                && matches!(args.op, Some(BinaryExpression::Subtract))
+                && args.predicate.threshold == 0
+                && matches!(args.predicate.comparison, Comparison::GreaterThan),
+            MarketError::PredicateMismatch
+        ),
+        1 => require!(
+            args.stat_a.stat_to_prove.key == k1 as u32
+                && args.stat_b.is_none()
+                && args.op.is_none()
+                && args.predicate.threshold == threshold as i32
+                && matches!(args.predicate.comparison, Comparison::GreaterThan),
+            MarketError::PredicateMismatch
+        ),
+        2 => require!(
+            args.stat_a.stat_to_prove.key == k1 as u32
+                && args.predicate.threshold == threshold as i32
+                && matches!(args.predicate.comparison, Comparison::EqualTo),
+            MarketError::PredicateMismatch
+        ),
+        _ => return err!(MarketError::PredicateMismatch),
+    }
+    let mut data = Vec::with_capacity(1024);
+    data.extend_from_slice(&VALIDATE_STAT_DISCRIMINATOR);
+    args.serialize(&mut data)?;
+    let ix = Instruction {
+        program_id: txline_program.key(),
+        accounts: vec![AccountMeta::new_readonly(daily_scores_merkle_roots.key(), false)],
+        data,
+    };
+    invoke(&ix, &[daily_scores_merkle_roots.clone(), txline_program.clone()])?;
+    let (ret_program, ret) = anchor_lang::solana_program::program::get_return_data()
+        .ok_or(MarketError::ProofRejected)?;
+    require_keys_eq!(ret_program, txline_program.key(), MarketError::ProofRejected);
+    Ok(ret.first() == Some(&1u8))
 }
 
 fn transfer_in(ctx: &Context<Deposit>, amount: u64) -> Result<()> {
@@ -406,6 +590,57 @@ pub struct UserDeposit {
 }
 
 // ---------------------------------------------------------------------------
+// Parlays
+// ---------------------------------------------------------------------------
+
+pub const MAX_LEGS: usize = 5;
+
+#[derive(Clone, Copy)]
+pub enum ParlayStatus {
+    Pending = 0,
+    Won = 1,
+    Lost = 2,
+    Claimed = 3,
+}
+
+/// One leg of a parlay: a predicate over a fixture and the side the ticket picked.
+/// `kind`: 0 MatchWinner (k1=team1 stat, k2=team2 stat), 1 OverUnder (k1=stat,
+/// threshold), 2 ExactScore (k1=stat, threshold=target). `predicted_yes` is the
+/// side the ticket needs.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace)]
+pub struct Leg {
+    pub fixture_id: u64,
+    pub kind: u8,
+    pub k1: u16,
+    pub k2: u16,
+    pub threshold: u64,
+    pub predicted_yes: bool,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct ParlayConfig {
+    pub authority: Pubkey,
+    pub mint: Pubkey,
+    pub leg_odds_bps: u16, // per-leg multiplier in basis points (e.g. 1900 = 1.9x)
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Parlay {
+    pub owner: Pubkey,
+    pub nonce: u64,
+    pub stake: u64,
+    pub num_legs: u8,
+    #[max_len(5)]
+    pub legs: Vec<Leg>,
+    pub proven_mask: u16,
+    pub status: u8,
+    pub bump: u8,
+}
+
+// ---------------------------------------------------------------------------
 // Accounts
 // ---------------------------------------------------------------------------
 
@@ -481,10 +716,14 @@ pub struct Settle<'info> {
 
     pub settler: Signer<'info>,
 
-    /// CHECK: CPI target — TxLINE oracle program
+    /// CHECK: CPI target — pinned to the REAL TxLINE oracle on-chain. This one constraint is
+    /// what makes settlement trustless: a fake oracle can no longer be substituted.
+    #[account(address = TXLINE_PROGRAM)]
     pub txline_program: UncheckedAccount<'info>,
 
-    /// CHECK: TxLINE daily_scores_merkle_roots PDA (validated by TxLINE)
+    /// CHECK: TxLINE daily_scores_merkle_roots PDA — must be OWNED by the real TxLINE program,
+    /// so a caller can't slip in a look-alike roots account under a fake program.
+    #[account(owner = TXLINE_PROGRAM)]
     pub daily_scores_merkle_roots: UncheckedAccount<'info>,
 }
 
@@ -531,6 +770,133 @@ pub struct Claim<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
+// ---- parlay accounts ----
+
+#[derive(Accounts)]
+pub struct InitParlayConfig<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + ParlayConfig::INIT_SPACE,
+        seeds = [b"parlay_config"],
+        bump
+    )]
+    pub config: Account<'info, ParlayConfig>,
+
+    /// CHECK: reward-vault authority PDA
+    #[account(seeds = [b"parlay_vault"], bump)]
+    pub vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        init,
+        payer = authority,
+        associated_token::mint = mint,
+        associated_token::authority = vault_authority,
+        associated_token::token_program = token_program,
+    )]
+    pub reward_vault: InterfaceAccount<'info, TokenAccount>,
+
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(nonce: u64)]
+pub struct CreateParlay<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(seeds = [b"parlay_config"], bump = config.bump)]
+    pub config: Account<'info, ParlayConfig>,
+
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + Parlay::INIT_SPACE,
+        seeds = [b"parlay", owner.key().as_ref(), nonce.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub parlay: Account<'info, Parlay>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = owner,
+        associated_token::token_program = token_program,
+    )]
+    pub user_token: InterfaceAccount<'info, TokenAccount>,
+
+    /// CHECK: reward-vault authority PDA
+    #[account(seeds = [b"parlay_vault"], bump)]
+    pub vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault_authority,
+        associated_token::token_program = token_program,
+    )]
+    pub reward_vault: InterfaceAccount<'info, TokenAccount>,
+
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ProveLeg<'info> {
+    #[account(mut)]
+    pub parlay: Account<'info, Parlay>,
+
+    pub settler: Signer<'info>,
+
+    /// CHECK: CPI target — TxLINE oracle program
+    pub txline_program: UncheckedAccount<'info>,
+
+    /// CHECK: TxLINE daily_scores_merkle_roots PDA (validated by TxLINE)
+    pub daily_scores_merkle_roots: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimParlay<'info> {
+    #[account(mut, has_one = owner)]
+    pub parlay: Account<'info, Parlay>,
+
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(seeds = [b"parlay_config"], bump = config.bump)]
+    pub config: Account<'info, ParlayConfig>,
+
+    /// CHECK: reward-vault authority PDA
+    #[account(seeds = [b"parlay_vault"], bump)]
+    pub vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault_authority,
+        associated_token::token_program = token_program,
+    )]
+    pub reward_vault: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = owner,
+        associated_token::token_program = token_program,
+    )]
+    pub user_token: InterfaceAccount<'info, TokenAccount>,
+
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+}
+
 #[error_code]
 pub enum MarketError {
     #[msg("Market is not open")]
@@ -555,4 +921,12 @@ pub enum MarketError {
     PredicateMismatch,
     #[msg("TxLINE rejected the proof (no/invalid verdict)")]
     ProofRejected,
+    #[msg("Parlay is not open (already won/lost/claimed)")]
+    ParlayClosed,
+    #[msg("Parlay has not won")]
+    ParlayNotWon,
+    #[msg("Invalid parlay legs")]
+    BadLegs,
+    #[msg("Invalid parlay odds")]
+    BadOdds,
 }
