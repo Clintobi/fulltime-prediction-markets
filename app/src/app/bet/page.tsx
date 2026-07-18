@@ -43,21 +43,31 @@ export default function BetPage() {
       const latest = await connection.getLatestBlockhash('confirmed')
       tx.feePayer = publicKey
       tx.recentBlockhash = latest.blockhash
-      // Sign explicitly (co-signers first, then the wallet) and submit the raw tx, so
-      // an extra signer's signature can't be invalidated by a blockhash re-fetch.
+      // Sign explicitly (co-signers first, then the wallet) so an extra signer's
+      // signature can't be invalidated by a blockhash re-fetch.
       if (signers.length) tx.partialSign(...signers)
       let sig: string
       if (signTransaction) {
-        const signed = await signTransaction(tx)
-        sig = await connection.sendRawTransaction(signed.serialize(), { maxRetries: 6 })
+        // Sign once, then RE-BROADCAST the same raw tx until it confirms or the
+        // blockhash expires — the free public devnet RPC drops txs, and re-sending
+        // the identical signed tx (no wallet re-prompt) is what actually lands it.
+        const raw = (await signTransaction(tx)).serialize()
+        sig = await connection.sendRawTransaction(raw, { maxRetries: 3 })
+        for (;;) {
+          await new Promise(r => setTimeout(r, 2200))
+          const st = await connection.getSignatureStatus(sig)
+          if (st.value?.err) throw new Error('reverted on-chain: ' + JSON.stringify(st.value.err))
+          const cs = st.value?.confirmationStatus
+          if (cs === 'confirmed' || cs === 'finalized') break
+          const h = await connection.getBlockHeight('confirmed')
+          if (h > latest.lastValidBlockHeight) throw new Error('not confirmed — the public devnet RPC is dropping it. Retry, or set NEXT_PUBLIC_RPC to a dedicated devnet endpoint.')
+          try { await connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 2 }) } catch {}
+        }
       } else {
         sig = await sendTransaction(tx, connection, { signers, maxRetries: 6 })
+        const res = await connection.confirmTransaction({ signature: sig, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight }, 'confirmed')
+        if (res.value.err) throw new Error('reverted on-chain: ' + JSON.stringify(res.value.err))
       }
-      const res = await connection.confirmTransaction(
-        { signature: sig, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
-        'confirmed',
-      )
-      if (res.value.err) throw new Error('reverted on-chain: ' + JSON.stringify(res.value.err))
       setMsg({ text: `${label} confirmed`, sig })
       await refresh()
     } catch (e: any) {
