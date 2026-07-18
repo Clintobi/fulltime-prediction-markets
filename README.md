@@ -123,17 +123,19 @@ If TxLINE accepts the proof, the outcome is cryptographically true.
 
 ## Live Demo (all on Solana devnet)
 
-Full market lifecycle, executed on-chain (`app/ft-demo.mjs`):
+Two markets **settled from genuine finalized TxLINE proofs** — the outcome is
+derived on-chain from TxLINE's `validate_stat` verdict, not supplied by the caller
+(`settle` takes no `outcome` argument). See [`VERIFY.md`](./VERIFY.md) for the
+inner-CPI logs and full reproduction (including the tamper-reverts path).
 
-| Step | Transaction |
-|---|---|
-| create_market (France YES / England NO) | [`48fVsy…`](https://explorer.solana.com/tx/48fVsy4fKFGNsgEpatw69iWb57o1VqosKaSETiZSPeTbnPy4C2o2zGK7AnQaLYb6SantRF1Rr1gqa5KTnjB9BxzD?cluster=devnet) |
-| deposit_yes (100 USDC) | [`3LHf4T…`](https://explorer.solana.com/tx/3LHf4T33rTA6pHEKHFuHG9LVad5XwFLfsB7Lfx2e2tNcmKpWAouV3yzQdHLxV8Hh3aiDoPymnPqGFaKxBQkbQ8Wi?cluster=devnet) |
-| deposit_no (50 USDC) | [`5BqKfM…`](https://explorer.solana.com/tx/5BqKfMfeHywD9g5ppdjjWRB7EaAWXSsFtKmshwR8eSpH5noNQcFo8jpZdeLr94RjmzryGoQnjm32sYKGLwg6CLDw?cluster=devnet) |
-| settle → YES | [`66i8af…`](https://explorer.solana.com/tx/66i8afUS4CcV6UNqVEFhGBQUSLgj9JKYUxJNE6p6QLV7rEk4qshmzcMyrZzuGxcUZS2aLXQv39iymyxjhvRqUvYF?cluster=devnet) |
-| claim_winnings (winner takes the 150 pool) | [`22FbfA…`](https://explorer.solana.com/tx/22FbfAUjw5NUTcChZsNcxbjFY66VypBEpCEN6KEQzirVhkYT13sA8xUNGkiWR9teohficcznninAsrh8tm5fa4vB?cluster=devnet) |
+| Fixture | Real score | Derived outcome | `settle` tx |
+|---|---|---|---|
+| 18179549 | 1–0 | **YES** | [`5QZzyp…3Nexy`](https://explorer.solana.com/tx/5QZzypbShX2VJzQuCpRJfUDb5F4oTx7H8v2RxrAh4NJybPnmMkG6PwVk25avgUFbZhneBxfNfE9hdYXmUEZ3Nexy?cluster=devnet) |
+| 18193785 | 1–4 | **NO** | [`4TG9BU…n3LJZ`](https://explorer.solana.com/tx/4TG9BU5XCi3hRAPq7wLKJtydFvN7XhCSo86Lp3SGbku4BqUneKBPWmnz1ZVkgY8u4dzc2jys11asrmaWRJRn3LJZ?cluster=devnet) |
 
-Market PDA `23XyHTV3FWKqVCYptp18jCcZNW3rHdkUvTpN5HJY2SvH` · test USDC mint `8NkH4t1TCXft5m5bvjNHGfjV1N7aG2BfWG6vzKKP8BjD`.
+A full stake→claim lifecycle (create → deposit → claim) is exercised end-to-end in
+`app/ft-demo.mjs`; the trustless `settle` above is the resolution path that matters
+for this track.
 
 ## TxLINE data integration
 

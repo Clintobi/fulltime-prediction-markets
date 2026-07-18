@@ -5,117 +5,133 @@
 ## One-liner
 
 Fulltime is a decentralized prediction market where every match settles from a
-**cryptographic TxLINE proof via CPI** — not a trusted oracle. Stake USDC on a
-match outcome; when TxLINE publishes the finalized scores, anyone can settle the
-market by proving the result against TxLINE's on-chain Merkle root, and winners
-claim their pro-rata share of the pool.
+**cryptographic TxLINE proof via CPI** — not a trusted oracle, not an admin. Stake
+USDC on a match outcome; when TxLINE publishes the finalized scores, **anyone** can
+settle the market by proving the result against TxLINE's on-chain Merkle root, and
+winners claim their pro-rata share of the pool.
 
 ## Why it fits the "Settlement" track
 
-Most prediction markets trust an oracle to *tell* the chain who won. Fulltime
-makes the chain **verify** it. Our `settle` instruction constructs TxLINE's real
-`validate_stat` instruction and invokes it via CPI; TxLINE's program reverts
-unless the submitted Merkle proof and predicate are valid against its published
-`daily_scores_merkle_roots`. The market can only resolve to an outcome that
-TxLINE's cryptographically-anchored data supports. That is settlement as
-*proof*, not settlement as *trust*.
+Most prediction markets trust an oracle (or an admin) to *tell* the chain who won.
+Fulltime makes the chain **verify** it. Our `settle` instruction:
 
-## Live links
+1. **Binds the proof to this market's fixture** — you can't settle with another match's proof.
+2. **Re-derives TxLINE's `daily_scores_roots` PDA from the proof's own timestamp** and requires the passed account to match — a caller can't substitute a fake roots account.
+3. **Requires full-time finality** (`period == 100`) — no settling on an in-play score.
+4. **Constrains the proven predicate to the market's canonical question** — for a MatchWinner market the proof *must* prove `team1_goals − team2_goals > 0`; you can only prove the thing this market actually asks.
+5. **CPIs into TxLINE's real `validate_stat`**, which reverts if the Merkle proof is invalid.
+6. **Reads the returned verdict** (`get_return_data`, with a `ret_program == TxLINE` check) and **derives** the outcome — `settle` takes **no `outcome` argument**.
+
+That is settlement as *proof*, not settlement as *trust*. (Program: `programs/fulltime/src/lib.rs`.)
+
+## Proven on-chain — real TxLINE-derived settlement (devnet)
+
+Two markets settled from **genuine finalized TxLINE proofs**. The scoreline came
+from TxLINE's own on-chain `validate_stat`; our program only read the verdict.
+
+| Fixture | Real score | Derived outcome | Settle tx |
+|---|---|---|---|
+| 18179549 | 1–0 | **YES** | [`5QZzyp…3Nexy`](https://explorer.solana.com/tx/5QZzypbShX2VJzQuCpRJfUDb5F4oTx7H8v2RxrAh4NJybPnmMkG6PwVk25avgUFbZhneBxfNfE9hdYXmUEZ3Nexy?cluster=devnet) |
+| 18193785 | 1–4 | **NO** | [`4TG9BU…n3LJZ`](https://explorer.solana.com/tx/4TG9BU5XCi3hRAPq7wLKJtydFvN7XhCSo86Lp3SGbku4BqUneKBPWmnz1ZVkgY8u4dzc2jys11asrmaWRJRn3LJZ?cluster=devnet) |
+
+The inner-CPI logs of the first tx (abridged) — TxLINE, not us, decides:
+
+```
+Program 37Gju…9vTW invoke [1]   Instruction: Settle
+  Program 6pW64…wyP2J invoke [2]   Instruction: ValidateStat
+    Find valid on-chain root for interval 43
+    Perform fixture-level validation … Pass fixture-level validation
+    Perform two-stat predicate validation
+    Evaluate predicate to: true
+  Program return: 6pW64…wyP2J AQ==     # 0x01 = true
+Program 37Gju…9vTW success
+```
+
+Two different real scorelines → two different **derived** outcomes, from a settle
+instruction that can't be told the answer. Full reproduction steps and the
+tamper-reverts (fraud) path are in [`VERIFY.md`](./VERIFY.md).
 
 - **App (real TxLINE devnet fixtures):** https://fulltime-txline.vercel.app
 - **Program (devnet):** [`37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW`](https://explorer.solana.com/address/37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW?cluster=devnet)
 - **Repo:** https://github.com/Clintobi/fulltime-prediction-markets
 
-## Proven on-chain (devnet transactions)
+## The fraud path reverts
 
-A complete market lifecycle for **France vs England**, run end to end:
+Corrupt any goal value in the proof and the tampered leaf no longer hashes to
+TxLINE's anchored root, so `validate_stat` reverts **inside the CPI** and the
+market stays open (`MODE=real TAMPER=1 node app/ft-real-settle.mjs`). You cannot
+settle to a result TxLINE's data doesn't support.
 
-1. `create_market` — [48fVsy…](https://explorer.solana.com/tx/48fVsy4fKFGNsgEpatw69iWb57o1VqosKaSETiZSPeTbnPy4C2o2zGK7AnQaLYb6SantRF1Rr1gqa5KTnjB9BxzD?cluster=devnet)
-2. `deposit_yes` 100 USDC — [3LHf4T…](https://explorer.solana.com/tx/3LHf4T33rTA6pHEKHFuHG9LVad5XwFLfsB7Lfx2e2tNcmKpWAouV3yzQdHLxV8Hh3aiDoPymnPqGFaKxBQkbQ8Wi?cluster=devnet)
-3. `deposit_no` 50 USDC — [5BqKfM…](https://explorer.solana.com/tx/5BqKfMfeHywD9g5ppdjjWRB7EaAWXSsFtKmshwR8eSpH5noNQcFo8jpZdeLr94RjmzryGoQnjm32sYKGLwg6CLDw?cluster=devnet)
-4. `settle` → YES — [66i8af…](https://explorer.solana.com/tx/66i8afUS4CcV6UNqVEFhGBQUSLgj9JKYUxJNE6p6QLV7rEk4qshmzcMyrZzuGxcUZS2aLXQv39iymyxjhvRqUvYF?cluster=devnet)
-5. `claim_winnings` (winner takes the 150-USDC pool) — [22FbfA…](https://explorer.solana.com/tx/22FbfAUjw5NUTcChZsNcxbjFY66VypBEpCEN6KEQzirVhkYT13sA8xUNGkiWR9teohficcznninAsrh8tm5fa4vB?cluster=devnet)
+## Beyond win/lose: parametric prop markets
 
-## Beyond win/lose: parametric prop bets
-
-The same predicate engine settles **prop markets**, not just match winners — the
-program's `MarketType` includes `OverUnder` and `ExactScore`. Demo
-(`app/ft-prop-demo.mjs`): a *"Total goals Over 2.5"* market — OVER 120 vs UNDER 80
-USDC escrowed, resolved OVER on a 3–1 result, backer collected the 200 pool, all
-on-chain ([create](https://explorer.solana.com/tx/5PbNiqC3L7APFUtZLwTFG8YPn9Y6x5G5Sre7VMdASscVEturPptz7BEzivE4weFaXUpkdzrjp3ESvjU4vxUcWVwB?cluster=devnet) ·
-[settle](https://explorer.solana.com/tx/4qTEf8shepsZvn2MMFZm7kYB1xRt2MYRKJtd6xHQMwkPKkXpQecgBmT7VQaXnZGPUue2S9EWU2mr14py9KNxArWP?cluster=devnet) ·
-[claim](https://explorer.solana.com/tx/2w3YtVNVtWz3Jo5ykb3njqNbAKtcGacx4j31CmWjjymJeLzdNuBWF8tzBE3T6MF66wrUhtsPWCi9t8g67eHNMiW5?cluster=devnet)).
-`validate_stat` proves an arbitrary `stat_a [op stat_b] comparison threshold`, so
-"corners > 10" or "shots on target ≥ 5" settle the same trustless way.
+The same predicate engine settles props, not just match winners — `MarketType`
+includes `OverUnder` (e.g. *total goals over 2.5*) and `ExactScore`. Because
+`validate_stat` proves an arbitrary `stat_a [op stat_b] comparison threshold`,
+markets like "corners > 10" or "shots on target ≥ 5" settle the same trustless
+way, with the predicate bound on-chain to the market's stored question.
 
 ## Real TxLINE integration (not mocked)
 
-We complete TxLINE's actual access flow programmatically (`app/txline-subscribe.mjs`):
-on-chain `subscribe(serviceLevel=1, weeks=4)` (free World Cup tier) → wallet
-signature → `POST /api/token/activate` → API token. The live site uses that
-token to render real TxLINE fixtures and scores. Our `settle` CPI targets
-TxLINE's real `validate_stat` (discriminator + `ScoresBatchSummary` /
-`StatTerm` / `TraderPredicate` arg structs taken directly from its on-chain IDL,
-so the Borsh encoding is wire-correct).
+We complete TxLINE's actual access flow programmatically
+(`app/txline-subscribe.mjs`): on-chain `subscribe(serviceLevel=1, weeks=4)` (free
+World Cup tier) → wallet signature → `POST /api/token/activate` → API token. The
+live site uses that token to render real TxLINE fixtures and scores. The
+`ValidateStatArgs` / `ScoresBatchSummary` / `StatTerm` / `TraderPredicate` structs
+mirror TxLINE's on-chain IDL exactly, so the Borsh encoding is wire-correct — as
+the passing devnet CPIs above prove.
 
 ## Architecture
 
 ```
 Frontend (Next.js, live TxLINE data)
-        │  stake USDC
+        │  stake USDC (Token-2022 escrow)
         ▼
 Fulltime program (Anchor)  ──CPI──►  TxLINE validate_stat
-  create/deposit/settle/claim         (verifies Merkle proof vs
-  USDC escrow (Token-2022)             daily_scores_merkle_roots)
+  create / deposit / settle / claim    (verifies Merkle proof vs
+  pro-rata pooled payout                daily_scores_merkle_roots,
+                                        returns the verdict)
 ```
 
 ## Honest status
 
-- ✅ Program deployed; full create → deposit → settle → claim proven on devnet.
-- ✅ `settle` CPIs the **real** `validate_stat` (byte-verified against the IDL).
+- ✅ Program deployed on devnet; two markets **settled from genuine TxLINE proofs**, outcome derived on-chain (txs above).
+- ✅ `settle` CPIs the **real** `validate_stat` (byte-verified against the IDL) and **binds the proven predicate to each market's question** on-chain — the proof settles the exact thing the market asks, not merely "a" valid proof.
 - ✅ Live site renders real TxLINE fixtures via a real subscription token.
-- ⏳ Settling from a *live* match proof requires TxLINE to publish finalized
-  scores for a fixture; the devnet showcase matches (France v England, Spain v
-  Argentina) fall in the hackathon window. The `admin_settle` fallback plus the
-  proof-driven `settle` path are both implemented; the demo above uses the
-  fallback, and we settle from a genuine proof as soon as one is published.
+- ⚠️ The program also ships an `admin_settle` **emergency fallback** (market-authority only, usable only while a market is still Open, and it can never override a proof-settled market). It exists for the contingency where TxLINE has not yet finalized a proof for a fixture. **It is not used in any settlement shown here** — every result above is a genuine `validate_stat` CPI. For mainnet it would be removed or placed behind a timelock that only activates if no proof appears within a set window.
 
 ## Run it
 
 ```bash
-# API token (real TxLINE subscription)
-DEPLOYER_KEYPAIR=deployer.json node app/txline-subscribe.mjs
-# full on-chain lifecycle
-DEPLOYER_KEYPAIR=deployer.json node app/ft-demo.mjs
+# real TxLINE subscription token
+DEPLOYER_KEYPAIR=~/fulltime-keys/deployer.json node app/txline-subscribe.mjs
+# settle a finished fixture from a REAL proof (verifies derived outcome == real result)
+CREDS=~/fulltime-keys/txline-creds.json DEPLOYER_KEYPAIR=~/fulltime-keys/deployer.json \
+  MODE=real FIXTURE=<finished-fixture-id> node app/ft-real-settle.mjs
 ```
 
 ## TxLINE endpoints used
 
 - `POST /auth/guest/start` — guest JWT.
-- On-chain `subscribe(serviceLevel=1, weeks=4)` on the TxLINE program +
-  `POST /api/token/activate` — API token (`app/txline-subscribe.mjs`).
+- On-chain `subscribe(serviceLevel=1, weeks=4)` + `POST /api/token/activate` — API token (`app/txline-subscribe.mjs`).
 - `GET /api/fixtures/snapshot` — World Cup fixtures.
-- `GET /api/scores/snapshot/{id}` · `GET /api/scores/stat-validation` — scores +
-  the Merkle settlement proof consumed by the on-chain `validate_stat` CPI.
-- CPI into TxLINE's on-chain `validate_stat` instruction for trustless settlement.
+- `GET /api/scores/snapshot/{id}` · `GET /api/scores/stat-validation` — scores + the Merkle settlement proof consumed by the on-chain `validate_stat` CPI.
+- CPI into TxLINE's on-chain `validate_stat` for trustless settlement.
 
 ## TxLINE API feedback
 
-**Liked:** one normalised JSON schema across fixtures/scores/odds made
-integration fast; the on-chain `validate_stat` primitive is a genuinely novel
-settlement mechanism — being able to CPI into it and have the runtime reject an
-invalid proof is exactly what a trustless market needs; the demargined odds book
-returns clean implied probabilities. **Friction:** data access requires an
-on-chain subscribe + `/api/token/activate` handshake before the API returns
-anything (403 "Missing API token" until then — not obvious from a first read);
-the `validate_stat` argument layout (`ScoresBatchSummary` / `StatTerm` /
-`TraderPredicate`) had to be reverse-engineered from the on-chain IDL — a
-copy-pasteable CPI example in the docs would have saved hours; pre-match
-snapshots are transient, so clients must cache and lean on the SSE stream.
+**Liked:** one normalised JSON schema across fixtures/scores/odds made integration
+fast; the on-chain `validate_stat` primitive is a genuinely novel settlement
+mechanism — being able to CPI into it and have the runtime reject an invalid proof
+is exactly what a trustless market needs; the demargined odds book returns clean
+implied probabilities. **Friction:** data access requires an on-chain subscribe +
+`/api/token/activate` handshake before the API returns anything (403 "Missing API
+token" until then — not obvious from a first read); the `validate_stat` argument
+layout had to be reverse-engineered from the on-chain IDL — a copy-pasteable CPI
+example in the docs would have saved hours; pre-match snapshots are transient, so
+clients must cache and lean on the SSE stream.
 
 ## Roadmap
 
-Permissionless keeper (bot/) auto-settles on `game_finalised`; derive the
-outcome on-chain from the proven predicate (remove the trusted pairing);
-mainnet + real USDC; auto-generate a market per fixture for the full 104-match
-tournament.
+Permissionless keeper auto-settles every market on `game_finalised`; remove the
+`admin_settle` fallback for mainnet; auto-generate a market per fixture for all 104
+matches; mainnet + real USDC.
