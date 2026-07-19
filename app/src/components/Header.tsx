@@ -22,6 +22,9 @@ export function Header() {
           <a href="/parlay" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
             Parlays
           </a>
+          <a href="/exchange" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
+            Exchange
+          </a>
           <a href="/verify" className="text-xs font-semibold text-slate-400 hover:text-slate-200 hidden sm:block">
             Verify
           </a>
