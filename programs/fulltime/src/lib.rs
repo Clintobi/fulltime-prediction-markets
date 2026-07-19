@@ -390,6 +390,152 @@ pub mod fulltime {
         ctx.accounts.parlay.status = ParlayStatus::Claimed as u8;
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // P2P exchange — back/lay matched bets (Betfair / BetDEX style). No house, no
+    // AMM (so nothing for arbitrageurs to drain at finalization), no manual ops
+    // team. A maker BACKs a predicate at fixed odds; a taker fills the LAY side;
+    // both stakes escrow in the offer's own vault; the outcome is proven via the
+    // same pinned validate_stat CPI; the winner takes the pot. Additive — `settle`
+    // is untouched.
+    // -----------------------------------------------------------------------
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_offer(
+        ctx: Context<CreateOffer>,
+        _nonce: u64,
+        fixture_id: u64,
+        kind: u8,
+        k1: u16,
+        k2: u16,
+        threshold: u64,
+        odds_bps: u32, // decimal odds ×10000; 20000 = 2.0×
+        stake: u64,    // maker's BACK stake
+    ) -> Result<()> {
+        require!(odds_bps > 10_000 && odds_bps <= 1_000_000, MarketError::BadOdds);
+        require!(stake > 0 && kind <= 2, MarketError::BadLegs);
+        let decimals = ctx.accounts.mint.decimals;
+        token_interface::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.maker_token.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.offer_vault.to_account_info(),
+                    authority: ctx.accounts.maker.to_account_info(),
+                },
+            ),
+            stake,
+            decimals,
+        )?;
+        let o = &mut ctx.accounts.offer;
+        o.maker = ctx.accounts.maker.key();
+        o.nonce = _nonce;
+        o.fixture_id = fixture_id;
+        o.kind = kind;
+        o.k1 = k1;
+        o.k2 = k2;
+        o.threshold = threshold;
+        o.odds_bps = odds_bps;
+        o.maker_stake = stake;
+        o.taker = Pubkey::default();
+        o.taker_liability = 0;
+        o.status = OfferStatus::Open as u8;
+        o.outcome_yes = false;
+        o.bump = ctx.bumps.offer;
+        Ok(())
+    }
+
+    pub fn fill_offer(ctx: Context<FillOffer>) -> Result<()> {
+        require!(ctx.accounts.offer.status == OfferStatus::Open as u8, MarketError::NotOpen);
+        require!(ctx.accounts.offer.maker != ctx.accounts.taker.key(), MarketError::Unauthorized);
+        // LAY liability = stake × (odds − 1)
+        let liability = ((ctx.accounts.offer.maker_stake as u128)
+            .checked_mul(ctx.accounts.offer.odds_bps as u128 - 10_000)
+            .unwrap()
+            / 10_000) as u64;
+        let decimals = ctx.accounts.mint.decimals;
+        token_interface::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.taker_token.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.offer_vault.to_account_info(),
+                    authority: ctx.accounts.taker.to_account_info(),
+                },
+            ),
+            liability,
+            decimals,
+        )?;
+        let o = &mut ctx.accounts.offer;
+        o.taker = ctx.accounts.taker.key();
+        o.taker_liability = liability;
+        o.status = OfferStatus::Filled as u8;
+        Ok(())
+    }
+
+    /// Permissionless — prove the offer's predicate via the same pinned validate_stat
+    /// CPI and record which side won. No admin, no dispute.
+    pub fn settle_offer(ctx: Context<SettleOffer>, args: ValidateStatArgs) -> Result<()> {
+        require!(ctx.accounts.offer.status == OfferStatus::Filled as u8, MarketError::NotOpen);
+        let (fid, kind, k1, k2, thr) = {
+            let o = &ctx.accounts.offer;
+            (o.fixture_id, o.kind, o.k1, o.k2, o.threshold)
+        };
+        let yes = derive_outcome_from_proof(
+            &ctx.accounts.txline_program.to_account_info(),
+            &ctx.accounts.daily_scores_merkle_roots.to_account_info(),
+            &args,
+            fid,
+            kind,
+            k1,
+            k2,
+            thr,
+        )?;
+        let o = &mut ctx.accounts.offer;
+        o.outcome_yes = yes;
+        o.status = OfferStatus::Settled as u8;
+        Ok(())
+    }
+
+    pub fn claim_offer(ctx: Context<ClaimOffer>) -> Result<()> {
+        require!(ctx.accounts.offer.status == OfferStatus::Settled as u8, MarketError::NotSettled);
+        // YES → the BACKer (maker) wins; NO → the LAYer (taker) wins.
+        let winner = if ctx.accounts.offer.outcome_yes {
+            ctx.accounts.offer.maker
+        } else {
+            ctx.accounts.offer.taker
+        };
+        require!(ctx.accounts.winner.key() == winner, MarketError::Unauthorized);
+        let pot = ctx
+            .accounts
+            .offer
+            .maker_stake
+            .checked_add(ctx.accounts.offer.taker_liability)
+            .unwrap();
+        let decimals = ctx.accounts.mint.decimals;
+        let maker = ctx.accounts.offer.maker;
+        let nonce = ctx.accounts.offer.nonce.to_le_bytes();
+        let bump = ctx.accounts.offer.bump;
+        let seeds: &[&[u8]] = &[b"offer", maker.as_ref(), &nonce, &[bump]];
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.offer_vault.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.winner_token.to_account_info(),
+                    authority: ctx.accounts.offer.to_account_info(),
+                },
+                &[seeds],
+            ),
+            pot,
+            decimals,
+        )?;
+        ctx.accounts.offer.status = OfferStatus::Claimed as u8;
+        Ok(())
+    }
 }
 
 /// Validate a TxLINE proof against a specific fixture + predicate and DERIVE the
@@ -637,6 +783,37 @@ pub struct Parlay {
     pub legs: Vec<Leg>,
     pub proven_mask: u16,
     pub status: u8,
+    pub bump: u8,
+}
+
+// ---------------------------------------------------------------------------
+// P2P exchange (back/lay matched bets)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+pub enum OfferStatus {
+    Open = 0,
+    Filled = 1,
+    Settled = 2,
+    Claimed = 3,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Offer {
+    pub maker: Pubkey,          // the BACKer
+    pub nonce: u64,
+    pub fixture_id: u64,
+    pub kind: u8,               // 0 MatchWinner, 1 OverUnder, 2 ExactScore
+    pub k1: u16,
+    pub k2: u16,
+    pub threshold: u64,
+    pub odds_bps: u32,          // decimal odds ×10000
+    pub maker_stake: u64,
+    pub taker: Pubkey,          // the LAYer (default until filled)
+    pub taker_liability: u64,
+    pub status: u8,
+    pub outcome_yes: bool,
     pub bump: u8,
 }
 
@@ -895,6 +1072,118 @@ pub struct ClaimParlay<'info> {
         associated_token::token_program = token_program,
     )]
     pub user_token: InterfaceAccount<'info, TokenAccount>,
+
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+}
+
+// ---- P2P exchange accounts ----
+
+#[derive(Accounts)]
+#[instruction(nonce: u64)]
+pub struct CreateOffer<'info> {
+    #[account(mut)]
+    pub maker: Signer<'info>,
+
+    #[account(
+        init,
+        payer = maker,
+        space = 8 + Offer::INIT_SPACE,
+        seeds = [b"offer", maker.key().as_ref(), nonce.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub offer: Account<'info, Offer>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = maker,
+        associated_token::token_program = token_program,
+    )]
+    pub maker_token: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        init,
+        payer = maker,
+        associated_token::mint = mint,
+        associated_token::authority = offer,
+        associated_token::token_program = token_program,
+    )]
+    pub offer_vault: InterfaceAccount<'info, TokenAccount>,
+
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct FillOffer<'info> {
+    #[account(mut)]
+    pub offer: Account<'info, Offer>,
+
+    #[account(mut)]
+    pub taker: Signer<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = taker,
+        associated_token::token_program = token_program,
+    )]
+    pub taker_token: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = offer,
+        associated_token::token_program = token_program,
+    )]
+    pub offer_vault: InterfaceAccount<'info, TokenAccount>,
+
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+}
+
+#[derive(Accounts)]
+pub struct SettleOffer<'info> {
+    #[account(mut)]
+    pub offer: Account<'info, Offer>,
+
+    pub settler: Signer<'info>,
+
+    /// CHECK: pinned to the canonical TxLINE oracle
+    #[account(address = TXLINE_PROGRAM)]
+    pub txline_program: UncheckedAccount<'info>,
+
+    /// CHECK: TxLINE daily_scores_merkle_roots PDA, owner-pinned to the oracle
+    #[account(owner = TXLINE_PROGRAM)]
+    pub daily_scores_merkle_roots: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimOffer<'info> {
+    #[account(mut)]
+    pub offer: Account<'info, Offer>,
+
+    #[account(mut)]
+    pub winner: Signer<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = offer,
+        associated_token::token_program = token_program,
+    )]
+    pub offer_vault: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = winner,
+        associated_token::token_program = token_program,
+    )]
+    pub winner_token: InterfaceAccount<'info, TokenAccount>,
 
     pub mint: InterfaceAccount<'info, Mint>,
     pub token_program: Program<'info, Token2022>,
