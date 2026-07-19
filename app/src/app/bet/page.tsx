@@ -93,6 +93,15 @@ export default function BetPage() {
   const total = mkt ? mkt.yes + mkt.no : 0
   const yesPct = total ? Math.round((mkt!.yes / total) * 100) : 50
   const won = dep && mkt?.resolution && ((mkt.resolution === 'YES') === dep.isYes)
+  // The demo market may point at an upcoming fixture (no score yet) — show "vs"
+  // until it settles, and gate settle until the match is actually played. Comparing
+  // a far-future kickoff to Date.now() is SSR-safe (both sides read "not started").
+  const hasScore = (DEMO as any).realResult?.g1 != null
+  const kickoff = (DEMO as any).kickoff as number | undefined
+  const notStarted = typeof kickoff === 'number' && kickoff > Date.now()
+  const kickoffLabel = kickoff
+    ? new Date(kickoff).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    : ''
 
   return (
     <div className="min-h-screen bg-bg">
@@ -108,8 +117,8 @@ export default function BetPage() {
             Place a bet. Watch it settle itself.
           </h1>
           <p className="text-[15px] text-ink-muted leading-relaxed mt-3 max-w-lg">
-            A real market on a finished World Cup match. Grab some test-USDC, back YES or NO, then
-            settle it from the real result and claim your winnings. Nobody types in the outcome — the match decides it.
+            A real market on a World Cup match. Grab some test-USDC and back YES or NO — then when the
+            match is played it settles itself from the real result and pays out. Nobody types in the outcome — the match decides it.
           </p>
         </div>
 
@@ -132,11 +141,17 @@ export default function BetPage() {
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
             <div className="text-right font-display font-semibold text-[16px] truncate">{DEMO.home}</div>
             <div className="font-mono text-2xl font-medium tabular-nums text-panel-ink">
-              {DEMO.realResult.g1}<span className="text-panel-muted mx-1.5">–</span>{DEMO.realResult.g2}
+              {hasScore ? (
+                <>{DEMO.realResult.g1}<span className="text-panel-muted mx-1.5">–</span>{DEMO.realResult.g2}</>
+              ) : (
+                <span className="text-[13px] font-semibold uppercase tracking-widest text-panel-muted">vs</span>
+              )}
             </div>
             <div className="text-left font-display font-semibold text-[16px] truncate">{DEMO.away}</div>
           </div>
-          <div className="text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-panel-muted mt-1.5 mb-5">Full time</div>
+          <div className="text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-panel-muted mt-1.5 mb-5">
+            {hasScore ? 'Full time' : notStarted ? `Kicks off ${kickoffLabel}` : 'Awaiting result'}
+          </div>
 
           {/* pool split */}
           <div className="flex items-center justify-between text-[12px] font-semibold mb-2">
@@ -231,10 +246,16 @@ export default function BetPage() {
 
             <div className="pt-2 border-t border-hairline" />
             {!mkt?.settled ? (
-              <ButtonAction onClick={() => run('Settle from proof', () => settleTx(publicKey))} disabled={!!busy}
-                variant="secondary" className="w-full">
-                {busy === 'Settle from proof' ? 'Settling from the result…' : 'Settle it from the result — anyone can'}
-              </ButtonAction>
+              notStarted ? (
+                <div className="w-full text-center text-[12px] text-ink-muted rounded-full border border-hairline py-2.5">
+                  Settles automatically once the match is played · {kickoffLabel}
+                </div>
+              ) : (
+                <ButtonAction onClick={() => run('Settle from proof', () => settleTx(publicKey))} disabled={!!busy}
+                  variant="secondary" className="w-full">
+                  {busy === 'Settle from proof' ? 'Settling from the result…' : 'Settle it from the result — anyone can'}
+                </ButtonAction>
+              )
             ) : (
               <ButtonAction onClick={() => run('Claim', () => claimTx(publicKey))} disabled={!!busy || !won || dep?.claimed}
                 variant="accent" className="w-full">
