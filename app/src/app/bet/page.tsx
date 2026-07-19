@@ -5,6 +5,9 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { ComputeBudgetProgram } from '@solana/web3.js'
 import { Header } from '@/components/Header'
+import { ButtonAction } from '@/components/ui/Button'
+import { Chip } from '@/components/ui/Chip'
+import { CheckIcon, ArrowUpRight } from '@/components/ui/Mascots'
 import {
   DEMO, MARKET, readMarket, usdcBalance, readDeposit,
   sendFaucet, depositTx, settleTx, claimTx, type MarketState, type Deposit,
@@ -92,118 +95,161 @@ export default function BetPage() {
   const won = dep && mkt?.resolution && ((mkt.resolution === 'YES') === dep.isYes)
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-bg">
       <Header />
-      <div className="max-w-2xl mx-auto px-4 py-10">
-        <div className="mb-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pitch-950 border border-pitch-800 text-pitch-300 text-xs mb-4">
-            <span className="w-2 h-2 rounded-full bg-pitch-400" /> Devnet · real on-chain market
+      <main className="max-w-xl mx-auto px-5 py-16 sm:py-20">
+        {/* intro */}
+        <div className="mb-8">
+          <div className="inline-flex items-center gap-2 rounded-full bg-accent/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dim mb-5">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot" />
+            A real bet, end to end · devnet
           </div>
-          <h1 className="font-display text-3xl font-bold tracking-[-0.03em]">Place a bet, then settle it from a proof</h1>
-          <p className="text-sm text-slate-400 mt-2">
-            A real market on a finished World Cup fixture. Get test-USDC, stake YES or NO, then
-            settle it trustlessly from TxLINE&apos;s on-chain proof and claim. No outcome is ever entered by hand.
+          <h1 className="font-display font-bold text-[30px] sm:text-[38px] tracking-[-0.02em] text-ink text-balance">
+            Place a bet. Watch it settle itself.
+          </h1>
+          <p className="text-[15px] text-ink-muted leading-relaxed mt-3 max-w-lg">
+            A real market on a finished World Cup match. Grab some test-USDC, back YES or NO, then
+            settle it from the real result and claim your winnings. Nobody types in the outcome — the match decides it.
           </p>
         </div>
 
-        {/* market card */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 mb-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-slate-500">TxLINE fixture {DEMO.fixtureId}</span>
-            <a href={`https://explorer.solana.com/address/${MARKET.toBase58()}?cluster=devnet`} target="_blank" rel="noreferrer" className="text-xs text-pitch-400 hover:underline font-mono">market ↗</a>
-          </div>
-          <div className="font-display text-xl font-semibold mb-4">{DEMO.home} <span className="text-slate-600 font-sans">vs</span> {DEMO.away}
-            <span className="text-xs font-normal text-slate-500 ml-2 font-mono">FT {DEMO.realResult.g1}–{DEMO.realResult.g2}</span>
+        {/* dark proof-ticket — the selected market, your position (the slip) & the on-chain result */}
+        <div className="rounded-ticket bg-panel border border-panel-hairline text-panel-ink p-5 sm:p-6 shadow-card mb-4">
+          {/* header: fixture + status */}
+          <div className="flex items-center justify-between gap-3 mb-5">
+            <a
+              href={`https://explorer.solana.com/address/${MARKET.toBase58()}?cluster=devnet`}
+              target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-panel-muted hover:text-panel-ink transition-colors"
+            >
+              TxLINE fixture {DEMO.fixtureId}
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </a>
+            <Chip status={mkt?.settled ? 'settled' : 'open'} onDark />
           </div>
 
-          {/* pool bar */}
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="text-pitch-300 font-semibold">YES · {DEMO.home} wins ({yesPct}%)</span>
-            <span className="text-slate-400 font-semibold">NO ({100 - yesPct}%)</span>
+          {/* scoreline */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <div className="text-right font-display font-semibold text-[16px] truncate">{DEMO.home}</div>
+            <div className="font-mono text-2xl font-medium tabular-nums text-panel-ink">
+              {DEMO.realResult.g1}<span className="text-panel-muted mx-1.5">–</span>{DEMO.realResult.g2}
+            </div>
+            <div className="text-left font-display font-semibold text-[16px] truncate">{DEMO.away}</div>
           </div>
-          <div className="h-2.5 rounded-full overflow-hidden bg-slate-800 flex mb-1.5">
-            <div className="bg-pitch-500" style={{ width: `${yesPct}%` }} />
-            <div className="bg-slate-600" style={{ width: `${100 - yesPct}%` }} />
+          <div className="text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-panel-muted mt-1.5 mb-5">Full time</div>
+
+          {/* pool split */}
+          <div className="flex items-center justify-between text-[12px] font-semibold mb-2">
+            <span className="text-accent">YES · {DEMO.home} wins ({yesPct}%)</span>
+            <span className="text-panel-muted">NO ({100 - yesPct}%)</span>
           </div>
-          <div className="flex justify-between text-[11px] text-slate-500 font-mono">
+          <div className="h-2.5 rounded-full overflow-hidden bg-panel-2 flex mb-2">
+            <div className="bg-accent" style={{ width: `${yesPct}%` }} />
+            <div className="bg-white/15" style={{ width: `${100 - yesPct}%` }} />
+          </div>
+          <div className="flex justify-between font-mono text-[12px] tabular-nums text-panel-muted">
             <span>{mkt ? fmt(mkt.yes) : '—'} USDC</span>
             <span>{mkt ? fmt(mkt.no) : '—'} USDC</span>
           </div>
 
+          {/* settled from proof */}
           {mkt?.settled && (
-            <div className="mt-4 text-sm px-3 py-2 rounded-lg bg-pitch-950/60 border border-pitch-900 text-pitch-200">
-              Settled from proof → resolved <b>{mkt.resolution}</b>
+            <div className="mt-4 flex items-center gap-2 rounded-input bg-accent/10 px-3 py-2.5 text-[13px] text-accent">
+              <CheckIcon className="w-4 h-4 shrink-0" />
+              <span>Settled from the result → <b className="font-semibold">{mkt.resolution}</b></span>
+            </div>
+          )}
+
+          {/* your position — the bet slip */}
+          {dep && (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-input bg-panel-2 px-3 py-2.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-panel-muted">Your position</span>
+              <span className="inline-flex items-center gap-1.5 font-mono text-[13px] tabular-nums text-panel-ink">
+                {fmt(dep.amount)} on {dep.isYes ? 'YES' : 'NO'}
+                {mkt?.settled && (dep.claimed ? ' · claimed' : won ? ' · won' : ' · lost')}
+                {mkt?.settled && won && !dep.claimed && <CheckIcon className="w-3.5 h-3.5 text-accent" />}
+              </span>
+            </div>
+          )}
+
+          {/* resulting on-chain tx */}
+          {msg && (
+            <div className="mt-4 pt-4 border-t border-panel-hairline flex flex-wrap items-center justify-between gap-2">
+              <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${msg.err ? 'text-negative' : 'text-accent'}`}>
+                {!msg.err && <CheckIcon className="w-4 h-4 shrink-0" />}
+                {msg.text}
+              </span>
+              {msg.sig && (
+                <a
+                  href={EX(msg.sig)} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-[12px] tabular-nums text-panel-muted hover:text-panel-ink transition-colors"
+                >
+                  {msg.sig.slice(0, 6)}…{msg.sig.slice(-6)}
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </a>
+              )}
             </div>
           )}
         </div>
 
+        {/* light form card — the controls */}
         {!publicKey ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 text-center">
-            <p className="text-sm text-slate-400 mb-4">Connect a devnet wallet to bet.</p>
-            <WalletMultiButton className="!bg-pitch-600 hover:!bg-pitch-700 !rounded-lg" />
+          <div className="rounded-card border border-hairline bg-surface p-5 sm:p-6">
+            <p className="text-[15px] text-ink-muted mb-4">Connect a devnet wallet to bet.</p>
+            <WalletMultiButton className="!bg-ink hover:!bg-black !text-white !text-sm !font-semibold !h-10 !rounded-full !px-4" />
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 space-y-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-400">your test-USDC</span>
-              <span className="font-mono">{fmt(bal)} USDC</span>
+          <div className="rounded-card border border-hairline bg-surface p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Your balance</span>
+              <span className="font-mono text-[15px] tabular-nums text-ink">{fmt(bal)} USDC</span>
             </div>
-            <button onClick={doFaucet} disabled={!!busy}
-              className="w-full py-2.5 rounded-lg border border-slate-700 hover:border-pitch-600 text-sm disabled:opacity-50">
+            <ButtonAction onClick={doFaucet} disabled={!!busy} variant="secondary" className="w-full">
               {busy === 'Faucet' ? 'Minting…' : 'Get 1,000 test-USDC'}
-            </button>
+            </ButtonAction>
 
             {!mkt?.settled && (
               <>
-                <div className="pt-2 border-t border-slate-800" />
-                <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-sm focus:border-pitch-600 outline-none" placeholder="amount (USDC)" />
+                <div className="pt-2 border-t border-hairline" />
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted mb-2">Stake (USDC)</label>
+                  <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal"
+                    className="w-full bg-surface border border-hairline rounded-input px-3.5 py-2.5 font-mono text-[15px] tabular-nums text-ink placeholder:text-ink-muted/60 outline-none focus-visible:ring-2 focus-visible:ring-accent" placeholder="amount (USDC)" />
+                </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => run('Bet YES', () => depositTx(publicKey, 'YES', Math.round(parseFloat(amount || '0') * 1e6)))} disabled={!!busy || !(parseFloat(amount) > 0)}
-                    className="py-3 rounded-lg bg-pitch-600 hover:bg-pitch-700 text-white text-sm font-semibold disabled:opacity-50">
+                  <ButtonAction onClick={() => run('Bet YES', () => depositTx(publicKey, 'YES', Math.round(parseFloat(amount || '0') * 1e6)))} disabled={!!busy || !(parseFloat(amount) > 0)}
+                    variant="accent" className="w-full">
                     {busy === 'Bet YES' ? '…' : `Bet YES · ${DEMO.home}`}
-                  </button>
-                  <button onClick={() => run('Bet NO', () => depositTx(publicKey, 'NO', Math.round(parseFloat(amount || '0') * 1e6)))} disabled={!!busy || !(parseFloat(amount) > 0)}
-                    className="py-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold disabled:opacity-50">
+                  </ButtonAction>
+                  <ButtonAction onClick={() => run('Bet NO', () => depositTx(publicKey, 'NO', Math.round(parseFloat(amount || '0') * 1e6)))} disabled={!!busy || !(parseFloat(amount) > 0)}
+                    variant="secondary" className="w-full !text-negative !border-negative/40 hover:!bg-negative/5">
                     {busy === 'Bet NO' ? '…' : 'Bet NO'}
-                  </button>
+                  </ButtonAction>
                 </div>
               </>
             )}
 
-            {dep && (
-              <div className="text-xs text-slate-400 px-3 py-2 rounded-lg bg-slate-950/60 border border-slate-800">
-                your position: <b className={dep.isYes ? 'text-pitch-300' : 'text-slate-300'}>{fmt(dep.amount)} on {dep.isYes ? 'YES' : 'NO'}</b>
-                {mkt?.settled && (dep.claimed ? ' · claimed' : won ? ' · won 🎉' : ' · lost')}
-              </div>
-            )}
-
-            <div className="pt-2 border-t border-slate-800" />
+            <div className="pt-2 border-t border-hairline" />
             {!mkt?.settled ? (
-              <button onClick={() => run('Settle from proof', () => settleTx(publicKey))} disabled={!!busy}
-                className="w-full py-2.5 rounded-lg border border-pitch-800 bg-pitch-950/40 hover:bg-pitch-950 text-pitch-200 text-sm disabled:opacity-50">
-                {busy === 'Settle from proof' ? 'Fetching proof + settling…' : 'Settle from TxLINE proof (anyone can)'}
-              </button>
+              <ButtonAction onClick={() => run('Settle from proof', () => settleTx(publicKey))} disabled={!!busy}
+                variant="secondary" className="w-full">
+                {busy === 'Settle from proof' ? 'Settling from the result…' : 'Settle it from the result — anyone can'}
+              </ButtonAction>
             ) : (
-              <button onClick={() => run('Claim', () => claimTx(publicKey))} disabled={!!busy || !won || dep?.claimed}
-                className="w-full py-3 rounded-lg bg-pitch-600 hover:bg-pitch-700 text-white text-sm font-semibold disabled:opacity-50">
+              <ButtonAction onClick={() => run('Claim', () => claimTx(publicKey))} disabled={!!busy || !won || dep?.claimed}
+                variant="accent" className="w-full">
                 {busy === 'Claim' ? 'Claiming…' : dep?.claimed ? 'Claimed' : won ? 'Claim winnings' : 'Nothing to claim'}
-              </button>
+              </ButtonAction>
             )}
           </div>
         )}
 
-        {msg && (
-          <div className={`mt-4 text-xs px-3 py-2.5 rounded-lg border ${msg.err ? 'border-red-900 bg-red-950/40 text-red-300' : 'border-pitch-900 bg-pitch-950/40 text-pitch-200'}`}>
-            {msg.text}{msg.sig && <> · <a href={EX(msg.sig)} target="_blank" rel="noreferrer" className="underline">explorer ↗</a></>}
-          </div>
-        )}
-
-        <p className="mt-6 text-[11px] text-slate-600 leading-relaxed">
-          Devnet demo. Test-USDC is valueless. Settlement runs a CPI to TxLINE&apos;s <span className="font-mono">validate_stat</span>
-          {' '}and derives the winner from the cryptographic verdict — a tampered proof reverts on-chain. A fixture settles once.
+        {/* disclaimer */}
+        <p className="mt-6 text-[12px] text-ink-muted leading-relaxed">
+          Devnet demo — test-USDC has no real value. When you settle, the winner is read straight from TxLINE&apos;s on-chain match data (<span className="font-mono">validate_stat</span>)
+          {' '}— a tampered result just gets rejected. Each match settles once.
         </p>
-      </div>
+      </main>
     </div>
   )
 }

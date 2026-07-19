@@ -109,33 +109,38 @@ export function TournamentGrid() {
   })
 
   return (
-    <section className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-        <h2 className="text-xl font-bold">
-          Tournament Matches
-          <span className="text-slate-500 text-sm font-normal ml-2">
-            {filtered.length} matches
-          </span>
-        </h2>
+    <section className="max-w-wide mx-auto px-5 py-16 sm:py-20">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
+        <div>
+          <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-accent-dim mb-2">
+            The board
+          </div>
+          <h2 className="font-display font-bold text-[28px] sm:text-[36px] tracking-[-0.015em]">
+            Tournament matches
+            <span className="text-ink-muted text-[18px] font-sans font-medium ml-3 align-middle">
+              {filtered.length}
+            </span>
+          </h2>
+        </div>
 
         <div className="flex items-center gap-3">
           <input
             type="text"
-            placeholder="Search teams..."
+            placeholder="Search teams…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-pitch-500/50 w-36 sm:w-48"
+            className="bg-surface border border-hairline rounded-full px-4 py-2 text-sm text-ink placeholder-ink-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent w-36 sm:w-48"
           />
 
-          <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+          <div className="flex gap-1 bg-surface rounded-full p-1 border border-hairline">
             {(['all', 'upcoming', 'live', 'finished'] as const).map(s => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-all ${
                   statusFilter === s
-                    ? 'bg-pitch-600 text-white'
-                    : 'text-slate-500 hover:text-slate-300'
+                    ? 'bg-ink text-white'
+                    : 'text-ink-muted hover:text-ink'
                 }`}
               >
                 {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -146,8 +151,9 @@ export function TournamentGrid() {
       </div>
 
       {!connected && (
-        <div className="mb-8 p-4 rounded-xl border border-yellow-800/40 bg-yellow-950/20 text-yellow-300 text-sm">
-          Connect your wallet to start making predictions on any match.
+        <div className="mb-8 p-4 rounded-card border border-hairline bg-surface text-ink-muted text-sm flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-accent flex-none" />
+          Connect a wallet to back any match on the board.
         </div>
       )}
 

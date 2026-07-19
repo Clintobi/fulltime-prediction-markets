@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConnection, useWallet } from '@solana/wallet-adapter-react'
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { ComputeBudgetProgram, Transaction, PublicKey } from '@solana/web3.js'
 import { Header } from '@/components/Header'
+import { Chip } from '@/components/ui/Chip'
+import { ButtonAction } from '@/components/ui/Button'
+import { CheckIcon, ArrowRight } from '@/components/ui/Mascots'
 import { listMarkets, createMarketTx, betTx, type MarketRow, type NewMarket } from '@/lib/markets'
 import { sendFaucet } from '@/lib/market'
 
@@ -12,9 +14,9 @@ const EX = (s: string) => `https://explorer.solana.com/address/${s}?cluster=devn
 const fmt = (n: number) => (n / 1e6).toLocaleString(undefined, { maximumFractionDigits: 1 })
 
 const KIND_STYLE: Record<string, string> = {
-  MatchWinner: 'border-pitch-800 text-pitch-300 bg-pitch-950/40',
-  OverUnder: 'border-indigo-800 text-indigo-300 bg-indigo-950/30',
-  ExactScore: 'border-amber-800 text-amber-300 bg-amber-950/30',
+  MatchWinner: 'border-hairline bg-bg text-ink-muted',
+  OverUnder: 'border-hairline bg-bg text-ink-muted',
+  ExactScore: 'border-hairline bg-bg text-ink-muted',
 }
 
 export default function MarketsPage() {
@@ -53,26 +55,24 @@ export default function MarketsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-bg">
       <Header />
-      <main className="max-w-5xl mx-auto px-4 py-10">
-        <div className="flex items-end justify-between flex-wrap gap-4 mb-8">
+      <main className="max-w-wide mx-auto px-5 py-16 sm:py-20">
+        <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
           <div>
-            <div className="text-xs font-mono text-pitch-400 mb-2">ONE ENGINE · THREE MARKET TYPES</div>
-            <h1 className="text-3xl font-bold tracking-tight">Markets</h1>
-            <p className="text-slate-400 mt-2 max-w-xl">Every market — match winner, over/under, exact score — settles the same trustless way: a TxLINE proof, verified on-chain. Spin one up on any fixture.</p>
-          </div>
-          <WalletMultiButton className="!bg-pitch-600 hover:!bg-pitch-700 !text-xs !h-9 !rounded-lg !px-4" />
-        </div>
+            <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-accent-dim mb-2">Three ways to call a match</div>
+            <h1 className="font-display font-bold text-[32px] sm:text-[40px] tracking-[-0.02em] text-ink">Markets</h1>
+            <p className="text-ink-muted mt-3 max-w-xl text-[15px] leading-relaxed">Back a winner, an over/under, or an exact score. However you call it, your payout settles from the real result — and you can check it on-chain. Open a market on any fixture in seconds.</p>
+          </div>        </div>
 
-        {msg && <div className={`mb-6 rounded-lg px-4 py-2.5 text-sm border ${msg.err ? 'border-red-900 bg-red-950/40 text-red-300' : 'border-pitch-800 bg-pitch-950/40 text-pitch-200'}`}>{msg.text}</div>}
+        {msg && <div className={`mb-6 rounded-input px-4 py-2.5 text-sm border ${msg.err ? 'border-negative/30 bg-negative/10 text-negative' : 'border-accent/40 bg-accent/10 text-accent-dim'}`}>{msg.text}</div>}
 
         <CreatePanel onCreate={(fx, m, label) => send(label, createMarketTx(publicKey!, fx, m))} busy={busy} connected={!!publicKey}
           onFaucet={() => publicKey && sendFaucet(connection, publicKey).then(() => setMsg({ text: 'minted 1000 test-USDC' })).catch(e => setMsg({ text: e.message, err: true }))} />
 
-        <div className="mt-8">
-          <div className="text-xs font-mono text-slate-500 mb-3">{rows ? `${rows.length} MARKET${rows.length === 1 ? '' : 'S'} ON-CHAIN` : 'LOADING…'}</div>
-          <div className="grid sm:grid-cols-2 gap-4">
+        <div className="mt-10">
+          <div className="font-mono text-[12px] tabular-nums tracking-wide text-ink-muted mb-3">{rows ? `${rows.length} MARKET${rows.length === 1 ? '' : 'S'} ON-CHAIN` : 'LOADING…'}</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {rows?.map(m => (
               <MarketCard key={m.pubkey} m={m} busy={busy} connected={!!publicKey}
                 onBet={(side, amt) => send(`bet ${side}`, betTx(new PublicKey(m.pubkey), publicKey!, side, amt))} />
@@ -95,17 +95,17 @@ function CreatePanel({ onCreate, onFaucet, busy, connected }: { onCreate: (fx: n
     { kind, statKey: Number(statKey), target: Number(threshold) }
   const fx = Number(fixture)
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
+    <div className="rounded-card border border-hairline bg-surface p-5 shadow-card-sm">
       <div className="flex items-center justify-between mb-4">
-        <div className="text-sm font-semibold text-slate-200">Create a market</div>
-        {connected && <button onClick={onFaucet} className="text-xs text-pitch-400 hover:text-pitch-300">Get test-USDC →</button>}
+        <div className="font-display font-semibold text-[18px] tracking-[-0.01em] text-ink">Create a market</div>
+        {connected && <button onClick={onFaucet} className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent-dim hover:text-accent-dim/80 transition-colors">Get test-USDC<ArrowRight className="w-3.5 h-3.5" /></button>}
       </div>
       <div className="grid sm:grid-cols-4 gap-3 items-end">
-        <label className="text-xs text-slate-400">Fixture id
-          <input value={fixture} onChange={e => setFixture(e.target.value)} placeholder="18257865" className="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-sm font-mono text-slate-200 outline-none focus:border-pitch-500" />
+        <label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Fixture id
+          <input value={fixture} onChange={e => setFixture(e.target.value)} placeholder="18257865" className="mt-1 w-full bg-bg border border-hairline rounded-input px-2.5 py-2 text-sm font-mono tabular-nums text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent" />
         </label>
-        <label className="text-xs text-slate-400">Type
-          <select value={kind} onChange={e => setKind(e.target.value as any)} className="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-pitch-500">
+        <label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Type
+          <select value={kind} onChange={e => setKind(e.target.value as any)} className="mt-1 w-full bg-bg border border-hairline rounded-input px-2.5 py-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent">
             <option value="MatchWinner">Match winner</option>
             <option value="OverUnder">Over / under</option>
             <option value="ExactScore">Exact score</option>
@@ -113,25 +113,24 @@ function CreatePanel({ onCreate, onFaucet, busy, connected }: { onCreate: (fx: n
         </label>
         {kind !== 'MatchWinner' && (
           <>
-            <label className="text-xs text-slate-400">Stat
-              <select value={statKey} onChange={e => setStatKey(e.target.value)} className="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-pitch-500">
+            <label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Stat
+              <select value={statKey} onChange={e => setStatKey(e.target.value)} className="mt-1 w-full bg-bg border border-hairline rounded-input px-2.5 py-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent">
                 <option value="3">Total goals</option>
                 <option value="1">Home goals</option>
                 <option value="2">Away goals</option>
                 <option value="4">Corners</option>
               </select>
             </label>
-            <label className="text-xs text-slate-400">{kind === 'OverUnder' ? 'Over' : 'Exactly'}
-              <input value={threshold} onChange={e => setThreshold(e.target.value)} className="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-sm font-mono text-slate-200 outline-none focus:border-pitch-500" />
+            <label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">{kind === 'OverUnder' ? 'Over' : 'Exactly'}
+              <input value={threshold} onChange={e => setThreshold(e.target.value)} className="mt-1 w-full bg-bg border border-hairline rounded-input px-2.5 py-2 text-sm font-mono tabular-nums text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent" />
             </label>
           </>
         )}
       </div>
-      <button disabled={!connected || !fx || !!busy} onClick={() => onCreate(fx, build(), 'create market')}
-        className="mt-4 bg-pitch-600 hover:bg-pitch-700 disabled:opacity-40 text-sm font-semibold rounded-lg px-5 py-2">
+      <ButtonAction variant="accent" disabled={!connected || !fx || !!busy} onClick={() => onCreate(fx, build(), 'create market')} className="mt-4">
         {busy === 'create market' ? 'Creating…' : connected ? 'Create market' : 'Connect wallet to create'}
-      </button>
-      <p className="text-xs text-slate-600 mt-3">Anyone can create a market. It stays open until TxLINE finalizes the fixture; then anyone (or the keeper) settles it from the proof.</p>
+      </ButtonAction>
+      <p className="text-[12px] text-ink-muted leading-relaxed mt-3">Anyone can open a market. It stays live until the match is final — then it settles itself from the result. No approval, no waiting on us.</p>
     </div>
   )
 }
@@ -141,28 +140,32 @@ function MarketCard({ m, onBet, busy, connected }: { m: MarketRow; onBet: (side:
   const total = m.yes + m.no
   const yesPct = total ? Math.round((m.yes / total) * 100) : 50
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 flex flex-col">
-      <div className="flex items-center justify-between mb-2">
-        <span className={`text-[10px] font-semibold uppercase tracking-wide rounded-md border px-2 py-0.5 ${KIND_STYLE[m.kind]}`}>{m.kind}</span>
-        <span className="text-[10px] font-mono text-slate-500">fixture {m.fixtureId}</span>
+    <div className={`rounded-card border bg-surface p-4 flex flex-col transition-all ${m.state === 'Settled' ? 'border-accent/40 shadow-card-sm' : 'border-hairline hover:border-ink/15 hover:shadow-card-sm'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className={`inline-flex items-center rounded-tag border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${KIND_STYLE[m.kind]}`}>{m.kind}</span>
+        <Chip status={m.state === 'Settled' ? 'settled' : 'open'} />
       </div>
-      <div className="text-sm font-medium text-slate-100 mb-3">{m.question}</div>
-      <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden mb-1">
-        <div className="h-full bg-pitch-500" style={{ width: `${yesPct}%` }} />
+      <div className="font-display font-semibold text-[15px] text-ink leading-snug mb-1">{m.question}</div>
+      <div className="font-mono text-[11px] tabular-nums text-ink-muted mb-3">fixture {m.fixtureId}</div>
+      <div className="h-1.5 rounded-full bg-hairline overflow-hidden mb-1.5">
+        <div className="h-full bg-accent rounded-full" style={{ width: `${yesPct}%` }} />
       </div>
-      <div className="flex justify-between text-[11px] text-slate-500 mb-3">
-        <span>YES {fmt(m.yes)}</span><span>NO {fmt(m.no)}</span>
+      <div className="flex justify-between font-mono text-[11px] tabular-nums mb-3">
+        <span className="text-accent-dim">YES {fmt(m.yes)}</span><span className="text-ink-muted">NO {fmt(m.no)}</span>
       </div>
       {m.state === 'Settled' ? (
-        <div className={`text-sm font-semibold ${m.resolution === 'YES' ? 'text-pitch-300' : 'text-slate-300'}`}>Settled → {m.resolution}</div>
+        <div className="mt-auto flex items-center gap-1.5">
+          <CheckIcon className="w-4 h-4 text-accent-dim" />
+          <span className={`text-[14px] font-semibold ${m.resolution === 'YES' ? 'text-accent-dim' : 'text-ink'}`}>Settled → {m.resolution}</span>
+        </div>
       ) : (
         <div className="mt-auto flex items-center gap-2">
-          <input value={amt} onChange={e => setAmt(e.target.value)} className="w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-200 outline-none" />
-          <button disabled={!connected || !!busy} onClick={() => onBet('YES', Math.round(Number(amt) * 1e6))} className="flex-1 bg-pitch-600/90 hover:bg-pitch-600 disabled:opacity-40 text-xs font-semibold rounded-lg py-1.5">YES</button>
-          <button disabled={!connected || !!busy} onClick={() => onBet('NO', Math.round(Number(amt) * 1e6))} className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-xs font-semibold rounded-lg py-1.5">NO</button>
+          <input value={amt} onChange={e => setAmt(e.target.value)} className="w-16 bg-bg border border-hairline rounded-input px-2 py-1.5 text-xs font-mono tabular-nums text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent" />
+          <button disabled={!connected || !!busy} onClick={() => onBet('YES', Math.round(Number(amt) * 1e6))} className="flex-1 bg-accent text-accent-ink hover:bg-accent-dim disabled:opacity-40 text-xs font-semibold rounded-full py-1.5 transition-colors">YES</button>
+          <button disabled={!connected || !!busy} onClick={() => onBet('NO', Math.round(Number(amt) * 1e6))} className="flex-1 bg-negative text-white hover:bg-negative/90 disabled:opacity-40 text-xs font-semibold rounded-full py-1.5 transition-colors">NO</button>
         </div>
       )}
-      <a href={`/verify`} className="text-[11px] text-slate-600 hover:text-slate-400 mt-3">verify settlement →</a>
+      <a href={`/verify`} className="inline-flex items-center gap-1 text-[12px] text-ink-muted hover:text-ink mt-3">verify settlement<ArrowRight className="w-3.5 h-3.5" /></a>
     </div>
   )
 }

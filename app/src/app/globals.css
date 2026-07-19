@@ -3,17 +3,73 @@
 @tailwind utilities;
 
 :root {
-  --foreground: #f8fafc;
-  --background: #020617;
+  --bg: #fbfaf7;
+  --ink: #1a1a1a;
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Display face carries slight negative tracking per the brief */
+  .font-display {
+    letter-spacing: -0.02em;
+  }
+  /* All numerics are tabular by default when using the mono face */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  /* Subtle warm dotted texture for the light shell (never on dark panels) */
+  .shell-grain {
+    background-image: radial-gradient(rgba(26, 26, 26, 0.035) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+/* Solana wallet button — the adapter's styles.css ships an UNLAYERED purple
+   (#512da8) trigger, so these overrides must also be unlayered (and slightly
+   more specific) to win the cascade. Reskin to the brief's ink pill. */
+button.wallet-adapter-button,
+button.wallet-adapter-button-trigger {
+  font-family: var(--font-sans) !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 9999px !important;
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+}
+button.wallet-adapter-button-trigger:hover,
+button.wallet-adapter-button:not([disabled]):hover {
+  background-color: #000000 !important;
+}
+
+/* Respect reduced-motion: kill drift + reveal animations entirely */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
