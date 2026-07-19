@@ -86,6 +86,18 @@ paid exactly `100 × 1.9² = 361` test-USDC; a wrong prediction resolved `Lost`
 `/markets` lists, creates, and bets on every on-chain market across all three types
 (`MatchWinner`, `OverUnder`, `ExactScore`) — all settling the same trustless way.
 
+## P2P exchange — back/lay matched bets
+
+`/exchange` is a peer-to-peer order book (Betfair/BetDEX style): a maker BACKs a
+predicate at their own odds, a taker LAYs the other side, both stakes escrow, and the
+winner is decided by the **same pinned `validate_stat` proof** — no house, no AMM (so
+nothing for arbitrageurs to drain at the whistle), no manual ops team. This beats a
+trust-oracle market (Polymarket) *and* the only Solana-native exchange (BetDEX, which
+settles by a manual ops team with no oracle) at once. **Verified on devnet both ways:**
+a BACK @ 2.0× won 200 on a 1-0 (YES); the LAY side won 200 on a 1-4 (NO)
+(`app/ft-exchange-demo.mjs`). Bets can be **gasless** — a fee-payer relayer sponsors
+the network fee so users need no SOL (`/api/relay`, falls back to wallet-pays).
+
 ## Verification you can run
 
 - `cd app && npm run test:e2e` — re-verifies both recorded settlements CPI'd `validate_stat` and resolved to the real scoreline.

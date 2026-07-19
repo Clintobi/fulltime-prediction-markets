@@ -101,6 +101,7 @@ The `fulltime` Anchor program (`programs/fulltime/src/lib.rs`) implements:
 | `settle` | Resolve the market by CPI to TxLINE's real `validate_stat` (oracle pinned on-chain) — reverts unless the Merkle proof + predicate are cryptographically valid. **No admin override exists.** |
 | `claim_winnings` | Pro-rata payout to the winning side from the escrow vault |
 | `create_parlay` / `prove_leg` / `claim_parlay` | Multi-leg tickets: each leg proven through the same pinned `validate_stat` CPI; all legs must hit to win |
+| `create_offer` / `fill_offer` / `settle_offer` / `claim_offer` | P2P back/lay exchange: maker backs at fixed odds, taker lays, winner decided by the same proof CPI (no house, no AMM) |
 
 ### CPI Integration — the core
 
