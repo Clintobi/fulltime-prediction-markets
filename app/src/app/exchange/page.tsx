@@ -7,6 +7,7 @@ import { ComputeBudgetProgram, Transaction, PublicKey } from '@solana/web3.js'
 import { Header } from '@/components/Header'
 import { listOffers, createOfferTx, fillOfferTx, layLiability, type OfferRow, type NewOffer } from '@/lib/exchange'
 import { sendFaucet } from '@/lib/market'
+import { trySponsored } from '@/lib/gasless'
 
 const fmt = (n: number) => (n / 1e6).toLocaleString(undefined, { maximumFractionDigits: 1 })
 const S: Record<string, string> = { Open: 'text-pitch-300 border-pitch-700', Filled: 'text-indigo-300 border-indigo-800', Settled: 'text-amber-300 border-amber-800', Claimed: 'text-slate-400 border-slate-700' }
@@ -28,6 +29,10 @@ export default function ExchangePage() {
     setBusy(true); setMsg(null)
     try {
       tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 300_000 }))
+      // Gasless first (fee-payer sponsorship) on a clone; silently falls back to
+      // the pristine wallet-pays tx below if the relayer isn't configured.
+      const sponsored = await trySponsored(connection, new Transaction().add(...tx.instructions), signTransaction)
+      if (sponsored) { setMsg({ text: ok + ' · gasless ⚡' }); await refresh(); return }
       const latest = await connection.getLatestBlockhash('confirmed')
       tx.feePayer = publicKey; tx.recentBlockhash = latest.blockhash
       const raw = (await signTransaction(tx)).serialize()
