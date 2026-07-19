@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios'
+import nacl from 'tweetnacl'
 
 const DEVNET_API_ORIGIN = 'https://txline-dev.txodds.com'
 const DEVNET_API_BASE = `${DEVNET_API_ORIGIN}/api`

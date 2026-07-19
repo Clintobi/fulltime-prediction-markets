@@ -1,0 +1,5 @@
+services:
+  judge:
+    build: .
+    network_mode: none
+    command: npm run judge:check

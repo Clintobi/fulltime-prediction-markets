@@ -2,14 +2,9 @@ import axios, { AxiosInstance } from 'axios'
 
 const DEVNET = {
   rpcUrl: 'https://api.devnet.solana.com',
-  apiOrigin: 'https://txline-dev.txodds.com',
+  apiOrigin: '/api/txline',
   programId: '6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J',
   txlTokenMint: '4Zao8ocPhmMgq7PdsYWyxvqySMGx7xb9cMftPMkEokRG',
-  // Free-tier devnet API token from an on-chain subscribe (serviceLevel 1).
-  // Grants read access to free World Cup / Friendlies devnet data; safe to ship.
-  apiToken:
-    process.env.NEXT_PUBLIC_TXLINE_API_TOKEN ||
-    'txoracle_api_6f0df6e475c04668b9a3a19aa1eefda4',
 }
 
 export type Fixture = {
@@ -48,8 +43,6 @@ export type OddsRecord = {
 
 export class TxlineClient {
   private http: AxiosInstance
-  private jwt: string | null = null
-  private apiToken: string | null = null
   private apiOrigin: string
 
   constructor() {
@@ -57,33 +50,15 @@ export class TxlineClient {
     this.http = axios.create({
       timeout: 30000,
       headers: { 'Content-Type': 'application/json' },
-      baseURL: `${this.apiOrigin}/api`,
+      baseURL: this.apiOrigin,
     })
   }
 
   get devnet() { return DEVNET }
 
-  async authenticate(): Promise<{ jwt: string; apiToken: string }> {
-    const authRes = await axios.post(`${this.apiOrigin}/auth/guest/start`)
-    this.jwt = authRes.data.token
-
-    this.http.defaults.headers.common['Authorization'] = `Bearer ${this.jwt}`
-    // The data API also requires the subscription API token on every request.
-    this.setApiToken(DEVNET.apiToken)
-    return { jwt: this.jwt, apiToken: this.apiToken || '' }
-  }
-
-  setApiToken(token: string) {
-    this.apiToken = token
-    this.http.defaults.headers.common['X-Api-Token'] = token
-  }
-
-  get headers() {
-    return {
-      Authorization: `Bearer ${this.jwt}`,
-      'X-Api-Token': this.apiToken || '',
-      'Content-Type': 'application/json',
-    }
+  async authenticate(): Promise<{ proxied: true }> {
+    // Credentials are exchanged by the server-only proxy on first request.
+    return { proxied: true }
   }
 
   async getFixtures(competitionId?: number): Promise<Fixture[]> {
@@ -126,9 +101,8 @@ export class TxlineClient {
     signal?: AbortSignal
   ): Promise<void> {
     const params = fixtureId ? `?fixtureId=${fixtureId}` : ''
-    const res = await fetch(`${this.apiOrigin}/api/scores/stream${params}`, {
+    const res = await fetch(`${this.apiOrigin}/scores/stream${params}`, {
       headers: {
-        ...this.headers,
         Accept: 'text/event-stream',
         'Cache-Control': 'no-cache',
       },
@@ -170,9 +144,8 @@ export class TxlineClient {
     signal?: AbortSignal
   ): Promise<void> {
     const params = fixtureId ? `?fixtureId=${fixtureId}` : ''
-    const res = await fetch(`${this.apiOrigin}/api/odds/stream${params}`, {
+    const res = await fetch(`${this.apiOrigin}/odds/stream${params}`, {
       headers: {
-        ...this.headers,
         Accept: 'text/event-stream',
         'Cache-Control': 'no-cache',
       },

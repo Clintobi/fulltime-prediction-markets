@@ -1,0 +1,11 @@
+.git
+.github
+app
+bot
+node_modules
+target
+tests/hermetic/node_modules
+*.log
+.env*
+**/.DS_Store
+**/*.tsbuildinfo

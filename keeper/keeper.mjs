@@ -19,7 +19,7 @@
 //     RPC_URL         Solana RPC          (default https://api.devnet.solana.com)
 //     CREDS           TxLINE creds JSON   (default ~/fulltime-keys/txline-creds.json)
 //     KEEPER_KEYPAIR  fee-payer keypair   (default ~/fulltime-keys/deployer.json)
-//     TXLINE_API_TOKEN  overrides the creds/shipped read-only devnet token
+//     TXLINE_API_TOKEN  overrides the credentials file token
 //     WATCHLIST       comma-separated fixture ids to check in addition to the
 //                     on-chain scan (fallback if the RPC blocks getProgramAccounts)
 //     INTERVAL_MS     loop pause between passes (default 30000)
@@ -35,6 +35,7 @@ import { createHash } from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { classifyScoreFeed } from './policy.mjs'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -42,9 +43,6 @@ import path from 'path'
 const PROGRAM = new PublicKey('37GjugP2yXMbuGNZTu6XSf1wsbegyXfMXGvGVKpX9vTW')
 const TXLINE = new PublicKey('6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J')
 const TXLINE_API = process.env.TXLINE_API || 'https://txline-dev.txodds.com'
-// Free read-only devnet API token (same one shipped in app/src/lib/txline.ts).
-// Used only if no creds file / TXLINE_API_TOKEN is provided.
-const SHIPPED_TOKEN = 'txoracle_api_6f0df6e475c04668b9a3a19aa1eefda4'
 const DAY_MS = 86_400_000
 
 const expand = p => (p && p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p)
@@ -75,7 +73,7 @@ const warn = (e, f) => log('warn', e, f)
 const error = (e, f) => log('error', e, f)
 
 // ---------------------------------------------------------------------------
-// Load TxLINE api token (creds file -> env -> shipped free token)
+// Load TxLINE API token (environment -> credentials file). Never ship credentials.
 // ---------------------------------------------------------------------------
 function loadApiToken() {
   if (process.env.TXLINE_API_TOKEN) return process.env.TXLINE_API_TOKEN
@@ -84,9 +82,13 @@ function loadApiToken() {
     const t = typeof creds.apiToken === 'string' ? creds.apiToken : creds.apiToken?.token
     if (t) return t
   } catch { /* fall through */ }
-  return SHIPPED_TOKEN
+  return null
 }
 const API_TOKEN = loadApiToken()
+if (!API_TOKEN) {
+  error('startup_fatal', { reason: 'no_txline_api_token', hint: 'set TXLINE_API_TOKEN or CREDS; the judge verifier uses recorded proofs and needs neither' })
+  process.exit(1)
+}
 
 // Fee-payer / settler keypair. Optional in --dry-run (we never send a tx there).
 let settler = null
@@ -217,15 +219,17 @@ async function txGet(pathStr) {
 // stat keys. Returns { seq, proof } or null if none is available yet.
 async function finalProof(fixtureId, statKeys) {
   const rows = await txGet(`/scores/snapshot/${fixtureId}`)
-  if (!Array.isArray(rows)) return null            // metadata missing / synthetic fixture
+  const policy = classifyScoreFeed(rows, fixtureId)
+  if (policy.state === 'malformed' || policy.state === 'void-review') return { policy }
+  if (policy.state !== 'final') return { policy }
   const seqs = [...new Set(rows.map(r => r.Seq).filter(x => x != null))].sort((a, b) => b - a)
   for (const seq of seqs.slice(0, 20)) {
     const p = await txGet(`/scores/stat-validation?fixtureId=${fixtureId}&seq=${seq}&statKeys=${statKeys}`).catch(() => null)
     if (p && Array.isArray(p.statsToProve) && p.statsToProve.length && p.statsToProve.every(s => s.period === 100)) {
-      return { seq, proof: p }
+      return { policy, seq, proof: p }
     }
   }
-  return null
+  return { policy: { state: 'pending', reason: 'final-score-has-no-validation-proof' } }
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +290,9 @@ async function processMarket(m) {
 
   const statKeys = `${m.team1Key},${m.team2Key}`
   const found = await finalProof(m.fixtureId, statKeys)
-  if (!found) return { action: 'skip', reason: 'no-final-proof' }
+  if (found.policy.state === 'malformed') return { action: 'skip', reason: `malformed-feed:${found.policy.reason}` }
+  if (found.policy.state === 'void-review') return { action: 'skip', reason: 'postponed-void-review' }
+  if (!found.proof) return { action: 'skip', reason: found.policy.reason || 'no-final-proof' }
   const { seq, proof } = found
 
   // Order (stat, statProof) pairs so index 0 == team1_key, index 1 == team2_key,

@@ -23,7 +23,10 @@ const TXLINE = new PublicKey('6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J')
 const MINT = new PublicKey(cfg.mint)
 const conn = new Connection(RPC, 'confirmed')
 const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(process.env.DEPLOYER_KEYPAIR, 'utf8'))))
-const faucet = Keypair.fromSecretKey(Uint8Array.from(cfg.faucetSecret))
+const faucetValue = process.env.FULLTIME_FAUCET_SECRET
+if (!faucetValue) throw new Error('FULLTIME_FAUCET_SECRET is required for the operator demo')
+const faucetBytes = faucetValue.trim().startsWith('[') ? JSON.parse(faucetValue) : Array.from(Buffer.from(faucetValue, 'base64'))
+const faucet = Keypair.fromSecretKey(Uint8Array.from(faucetBytes))
 const creds = JSON.parse(fs.readFileSync(process.env.CREDS, 'utf8'))
 const apiToken = typeof creds.apiToken === 'string' ? creds.apiToken : creds.apiToken.token
 const EX = s => `https://explorer.solana.com/tx/${s}?cluster=devnet`

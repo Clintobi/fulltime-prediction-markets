@@ -6,7 +6,7 @@
   "description": "Hermetic, deterministic LiteSVM test suite for the Fulltime Solana program \u2014 loads the REAL TxLINE oracle binary + REAL on-chain roots + a REAL finalised proof.",
   "scripts": {
     "dump": "node dump-artifacts.mjs",
-    "test": "node --test settle.test.mjs",
+    "test": "node --test *.test.mjs",
     "test:watch": "vitest"
   },
   "devDependencies": {

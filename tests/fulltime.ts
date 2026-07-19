@@ -2,6 +2,7 @@ import * as anchor from '@coral-xyz/anchor'
 import { Program } from '@coral-xyz/anchor'
 import { PublicKey } from '@solana/web3.js'
 import { expect } from 'chai'
+import { execFileSync } from 'node:child_process'
 import type { Fulltime } from '../target/types/fulltime'
 
 describe('fulltime', () => {
@@ -23,7 +24,6 @@ describe('fulltime', () => {
       [
         Buffer.from('market'),
         fixtureId.toArrayLike(Buffer, 'le', 8),
-        provider.wallet.publicKey.toBuffer(),
       ],
       program.programId
     )
@@ -42,13 +42,13 @@ describe('fulltime', () => {
   })
 
   it('allows depositing USDC on a market', async () => {
-    // Integration test — requires:
-    // 1. A funded USDC token account
-    // 2. An initialized vault PDA
-    //
-    // For full integration testing, run:
-    //   ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
-    //   anchor test --skip-deploy
-    console.log('Deposit test requires USDC tokens. Skipping in unit test mode.')
+    // Run the compiled Fulltime program and Token-2022 in-process. This is a real
+    // escrow transfer with real account layouts, but needs no wallet, USDC, RPC,
+    // validator, or devnet funding.
+    const output = execFileSync(process.execPath, ['--test', 'tests/hermetic/deposit.test.mjs'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    })
+    expect(output).to.include('pass 1')
   })
 })

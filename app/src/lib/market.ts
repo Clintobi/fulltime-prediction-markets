@@ -2,11 +2,12 @@
 // faucet / deposit / settle / claim transactions the betting page signs with the wallet.
 import { Buffer } from 'buffer'
 import {
-  Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram, Keypair, ComputeBudgetProgram,
+  Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram, ComputeBudgetProgram,
 } from '@solana/web3.js'
+import type { Keypair } from '@solana/web3.js'
 import {
   TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync,
-  createAssociatedTokenAccountIdempotentInstruction, createMintToInstruction, getAccount,
+  getAccount,
 } from '@solana/spl-token'
 import cfg from './demo-market.json'
 
@@ -15,8 +16,6 @@ export const TXLINE = new PublicKey('6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2
 export const MARKET = new PublicKey(cfg.market)
 export const MINT = new PublicKey(cfg.mint)
 export const DEMO = cfg
-const FAUCET = Keypair.fromSecretKey(Uint8Array.from(cfg.faucetSecret))
-const API = 'https://txline-dev.txodds.com'
 
 const DISC: Record<string, number[]> = {
   deposit_yes: [5, 45, 244, 138, 207, 34, 60, 183],
@@ -66,32 +65,17 @@ export async function readDeposit(conn: Connection, user: PublicKey): Promise<De
 
 // --- transactions (each returns extra signers to pass to wallet sendTransaction) ---
 
-// Faucet is signed ENTIRELY by the devnet faucet keypair (fee payer + mint authority),
-// so the user's wallet is never a signer — no Phantom "unexpected signer" warning, no
-// popup, and the app controls the tx (re-broadcasts through the flaky public RPC).
-export async function sendFaucet(connection: Connection, user: PublicKey): Promise<string> {
-  const ata = userAta(user)
-  const tx = new Transaction().add(
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 300_000 }),
-    createAssociatedTokenAccountIdempotentInstruction(FAUCET.publicKey, ata, user, MINT, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
-    createMintToInstruction(MINT, ata, FAUCET.publicKey, 1_000_000000, [], TOKEN_2022_PROGRAM_ID),
-  )
-  const latest = await connection.getLatestBlockhash('confirmed')
-  tx.feePayer = FAUCET.publicKey
-  tx.recentBlockhash = latest.blockhash
-  tx.sign(FAUCET)
-  const raw = tx.serialize()
-  const sig = await connection.sendRawTransaction(raw, { maxRetries: 3 })
-  for (;;) {
-    await new Promise(r => setTimeout(r, 2000))
-    const st = await connection.getSignatureStatus(sig)
-    if (st.value?.err) throw new Error('faucet reverted: ' + JSON.stringify(st.value.err))
-    const cs = st.value?.confirmationStatus
-    if (cs === 'confirmed' || cs === 'finalized') return sig
-    if ((await connection.getBlockHeight('confirmed')) > latest.lastValidBlockHeight)
-      throw new Error('faucet not confirmed — devnet RPC is dropping it; retry or set NEXT_PUBLIC_RPC')
-    try { await connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 2 }) } catch {}
-  }
+// The devnet faucet signs server-side. The browser never receives the mint authority,
+// and the user's wallet does not need SOL or approve a faucet transaction.
+export async function sendFaucet(_connection: Connection, user: PublicKey): Promise<string> {
+  const response = await fetch('/api/faucet', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: user.toBase58() }),
+  })
+  const body = await response.json()
+  if (!response.ok) throw new Error(body.error || `faucet failed (${response.status})`)
+  return body.signature
 }
 
 export function depositTx(user: PublicKey, side: 'YES' | 'NO', amount: number): { tx: Transaction; signers: Keypair[] } {
@@ -132,10 +116,8 @@ export function claimTx(user: PublicKey): { tx: Transaction; signers: Keypair[] 
 }
 
 // --- permissionless settle from a real TxLINE proof ---
-let JWT: string | null = null
 async function txapi(path: string) {
-  if (!JWT) JWT = (await (await fetch(`${API}/auth/guest/start`, { method: 'POST' })).json()).token
-  const r = await fetch(`${API}/api${path}`, { headers: { Authorization: `Bearer ${JWT}`, 'X-Api-Token': cfg.txlineApiToken } })
+  const r = await fetch(`/api/txline${path}`, { cache: 'no-store' })
   if (!r.ok) throw new Error(`TxLINE ${path} -> ${r.status}`)
   return r.json()
 }

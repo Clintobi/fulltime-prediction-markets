@@ -14,6 +14,7 @@ import {
 } from '@/lib/market'
 
 const EX = (s: string) => `https://explorer.solana.com/tx/${s}?cluster=devnet`
+const ORACLE = 'https://explorer.solana.com/address/6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J?cluster=devnet'
 const fmt = (n: number) => (n / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })
 
 export default function BetPage() {
@@ -102,6 +103,26 @@ export default function BetPage() {
   const kickoffLabel = kickoff
     ? new Date(kickoff).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
     : ''
+  const lifecycle = [
+    { label: 'Connect', done: Boolean(publicKey), current: !publicKey },
+    { label: 'Fund', done: bal > 0, current: Boolean(publicKey) && bal <= 0 },
+    { label: 'Deposit', done: Boolean(dep), current: Boolean(publicKey) && bal > 0 && !dep },
+    { label: 'Proof settles', done: Boolean(mkt?.settled), current: Boolean(dep) && !mkt?.settled },
+    { label: 'Claim', done: Boolean(dep?.claimed), current: Boolean(mkt?.settled && won && !dep?.claimed) },
+  ]
+  const nextAction = !publicKey
+    ? 'Connect a devnet wallet. Fulltime never holds your wallet key.'
+    : bal <= 0
+      ? 'Fund with test-USDC. It has no real value and the app pays the devnet mint fee.'
+      : !dep
+        ? 'Choose YES or NO. Your deposit moves into the market’s Token-2022 escrow vault.'
+        : !mkt?.settled
+          ? 'Your position is locked. Any caller can submit the final TxLINE proof; nobody can choose the outcome.'
+          : won && !dep.claimed
+            ? 'The proof settled your side as the winner. Claim your program-calculated pro-rata payout.'
+            : dep.claimed
+              ? 'Lifecycle complete: the winning payout has left escrow and this position is closed.'
+              : 'The proof settled the other side. The program correctly exposes no claim action for this position.'
 
   return (
     <div className="min-h-screen bg-bg">
@@ -120,6 +141,24 @@ export default function BetPage() {
             A real market on a World Cup match. Grab some test-USDC and back YES or NO — then when the
             match is played it settles itself from the real result and pays out. Nobody types in the outcome — the match decides it.
           </p>
+        </div>
+
+        {/* lifecycle orientation — one glance explains deposit → proof → claim */}
+        <div className="mb-5 border-y border-hairline py-4">
+          <ol className="grid grid-cols-5 gap-2" aria-label="Market lifecycle">
+            {lifecycle.map((step, index) => (
+              <li key={step.label} aria-current={step.current ? 'step' : undefined} className="min-w-0">
+                <div className={`font-mono text-[11px] tabular-nums ${step.done ? 'text-accent-dim' : step.current ? 'text-ink' : 'text-ink-muted/55'}`}>
+                  {step.done ? '✓' : index + 1}
+                </div>
+                <div className={`mt-1 text-[10px] sm:text-[11px] font-semibold leading-tight ${step.current ? 'text-ink' : 'text-ink-muted'}`}>
+                  {step.label}
+                </div>
+                <div className={`mt-2 h-1 rounded-full ${step.done ? 'bg-accent' : step.current ? 'bg-ink' : 'bg-hairline'}`} />
+              </li>
+            ))}
+          </ol>
+          <p className="mt-4 text-[13px] leading-relaxed text-ink-muted"><span className="font-semibold text-ink">Next:</span> {nextAction}</p>
         </div>
 
         {/* dark proof-ticket — the selected market, your position (the slip) & the on-chain result */}
@@ -169,9 +208,14 @@ export default function BetPage() {
 
           {/* settled from proof */}
           {mkt?.settled && (
-            <div className="mt-4 flex items-center gap-2 rounded-input bg-accent/10 px-3 py-2.5 text-[13px] text-accent">
-              <CheckIcon className="w-4 h-4 shrink-0" />
-              <span>Settled from the result → <b className="font-semibold">{mkt.resolution}</b></span>
+            <div className="mt-4 rounded-input bg-accent/10 px-3 py-3 text-[13px] text-accent">
+              <div className="flex items-center gap-2">
+                <CheckIcon className="w-4 h-4 shrink-0" />
+                <span>TxLINE proof accepted on-chain → <b className="font-semibold">{mkt.resolution}</b></span>
+              </div>
+              <a href={ORACLE} target="_blank" rel="noreferrer" className="mt-1.5 ml-6 inline-flex items-center gap-1 font-mono text-[10px] text-panel-muted hover:text-panel-ink transition-colors">
+                canonical oracle · 6pW64…wyP2J <ArrowUpRight className="w-3 h-3" />
+              </a>
             </div>
           )}
 
@@ -253,7 +297,7 @@ export default function BetPage() {
               ) : (
                 <ButtonAction onClick={() => run('Settle from proof', () => settleTx(publicKey))} disabled={!!busy}
                   variant="secondary" className="w-full">
-                  {busy === 'Settle from proof' ? 'Settling from the result…' : 'Settle it from the result — anyone can'}
+                  {busy === 'Settle from proof' ? 'Verifying TxLINE proof on-chain…' : 'Submit final TxLINE proof · permissionless'}
                 </ButtonAction>
               )
             ) : (
@@ -267,8 +311,8 @@ export default function BetPage() {
 
         {/* disclaimer */}
         <p className="mt-6 text-[12px] text-ink-muted leading-relaxed">
-          Devnet demo — test-USDC has no real value. When you settle, the winner is read straight from TxLINE&apos;s on-chain match data (<span className="font-mono">validate_stat</span>)
-          {' '}— a tampered result just gets rejected. Each match settles once.
+          Devnet demo — test-USDC has no real value. Deposit moves tokens into program escrow; settlement CPIs into the pinned TxLINE oracle (<span className="font-mono">validate_stat</span>);
+          {' '}claim derives the payout from your on-chain position. A malformed, non-final, wrong-fixture, or tampered proof reverts. Each market settles once.
         </p>
       </main>
     </div>

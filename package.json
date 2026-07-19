@@ -1,0 +1,11 @@
+{
+  "name": "fulltime-submission",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm test --prefix tests/hermetic && npm test --prefix keeper",
+    "judge:check": "npm test && node scripts/judge-summary.mjs",
+    "judge:verify": "npm ci --prefix tests/hermetic --ignore-scripts && npm run judge:check"
+  }
+}

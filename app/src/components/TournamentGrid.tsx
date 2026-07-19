@@ -175,7 +175,7 @@ async function* streamScores(
   signal: AbortSignal
 ): AsyncGenerator<ScoreRecord> {
   try {
-    const stream = await fetch('https://txline-dev.txodds.com/api/scores/stream', {
+    const stream = await fetch('/api/txline/scores/stream', {
       signal,
     })
     if (!stream.ok || !stream.body) return

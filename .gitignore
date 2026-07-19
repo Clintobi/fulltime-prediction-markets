@@ -5,5 +5,13 @@ target/
 *.log
 .env.local
 .env
+.env.*
+!.env.example
+*.keypair.json
+*credentials*.json
+*creds*.json
+*.jsonl
+*.tsbuildinfo
+.DS_Store
 _keys/
 _idl/

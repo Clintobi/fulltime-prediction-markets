@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node keeper.mjs",
     "once": "node keeper.mjs --once",
-    "dry-run": "node keeper.mjs --once --dry-run"
+    "dry-run": "node keeper.mjs --once --dry-run",
+    "test": "node --test policy.test.mjs"
   },
   "engines": {
     "node": ">=18"
