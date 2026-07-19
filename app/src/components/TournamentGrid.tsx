@@ -153,7 +153,7 @@ export function TournamentGrid() {
       {!connected && (
         <div className="mb-8 p-4 rounded-card border border-hairline bg-surface text-ink-muted text-sm flex items-center gap-3">
           <span className="w-2 h-2 rounded-full bg-accent flex-none" />
-          Connect a wallet to back any match on the board.
+          A live view of the fixtures — open Markets or Place a bet to trade them.
         </div>
       )}
 

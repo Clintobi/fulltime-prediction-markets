@@ -77,14 +77,11 @@ function getMatchStatus(
   return { label: 'Upcoming', live: false, finished: false }
 }
 
-// Deterministic pseudo-pools seeded by fixture id — stable across SSR/CSR
-// (Math.random would cause a hydration mismatch).
-function seededPools(id: number): [number, number] {
-  return [100 + ((id * 37) % 500), 100 + ((id * 53) % 500)]
-}
-
+// The home board is a fixtures showcase, not a live betting surface — the real
+// trading happens on /markets and /bet. So a card is a link into the real flow
+// (finished → /verify to see the settlement, otherwise → /markets), with no
+// placeholder pools or non-functional bet buttons.
 export function MatchCard({ fixture, scores, index }: MatchCardProps) {
-  const [betSide, setBetSide] = useState<'yes' | 'no' | null>(null)
   const [now, setNow] = useState<number | null>(null)
   useEffect(() => setNow(Date.now()), [])
 
@@ -97,11 +94,12 @@ export function MatchCard({ fixture, scores, index }: MatchCardProps) {
   const timeStr = matchDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
 
   const { finished: isFinished, live: isLive } = status
-  const [poolYes, poolNo] = seededPools(fixture.FixtureId)
+  const href = isFinished ? '/verify' : '/markets'
 
   return (
-    <div
-      className={`rounded-card border bg-surface p-4 transition-all duration-300 ${
+    <a
+      href={href}
+      className={`group block rounded-card border bg-surface p-4 transition-all duration-300 ${
         isLive
           ? 'border-accent/40 shadow-card-sm'
           : 'border-hairline hover:border-ink/15 hover:shadow-card-sm'
@@ -114,7 +112,7 @@ export function MatchCard({ fixture, scores, index }: MatchCardProps) {
         </span>
         <span
           className={`inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] ${
-            isLive ? 'text-accent-dim' : isFinished ? 'text-accent-dim' : 'text-ink-muted'
+            isLive || isFinished ? 'text-accent-dim' : 'text-ink-muted'
           }`}
         >
           {isLive && <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot" />}
@@ -127,7 +125,7 @@ export function MatchCard({ fixture, scores, index }: MatchCardProps) {
         <div className="text-right text-[14px] font-semibold truncate">
           {getFlag(homeTeam)} {homeTeam}
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center justify-center">
           {status.homeScore !== undefined ? (
             <span className="font-mono text-xl font-medium tabular-nums">
               {status.homeScore}
@@ -143,51 +141,26 @@ export function MatchCard({ fixture, scores, index }: MatchCardProps) {
         </div>
       </div>
 
-      {/* YES / NO */}
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={() => setBetSide('yes')}
-          disabled={isFinished}
-          className={`rounded-input px-3 py-2 text-[13px] font-medium transition-all ${
-            betSide === 'yes'
-              ? 'bg-accent text-accent-ink'
-              : 'bg-bg border border-hairline text-ink-muted hover:border-accent/50 hover:text-ink'
-          } ${isFinished ? 'opacity-50 pointer-events-none' : ''}`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate">{homeTeam}</span>
-            <span className="font-mono tabular-nums">{poolYes}</span>
-          </div>
-        </button>
-        <button
-          onClick={() => setBetSide('no')}
-          disabled={isFinished}
-          className={`rounded-input px-3 py-2 text-[13px] font-medium transition-all ${
-            betSide === 'no'
-              ? 'bg-negative text-white'
-              : 'bg-bg border border-hairline text-ink-muted hover:border-negative/50 hover:text-ink'
-          } ${isFinished ? 'opacity-50 pointer-events-none' : ''}`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate">{awayTeam}</span>
-            <span className="font-mono tabular-nums">{poolNo}</span>
-          </div>
-        </button>
-      </div>
-
-      {/* settled proof line */}
-      {isFinished && (
-        <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-accent-dim">
-            <CheckIcon className="w-3.5 h-3.5" />
-            Settled &amp; paid
+      {/* CTA into the real flow */}
+      <div className="pt-3 border-t border-hairline flex items-center justify-between">
+        {isFinished ? (
+          <>
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-accent-dim">
+              <CheckIcon className="w-3.5 h-3.5" />
+              Settled &amp; paid
+            </span>
+            <span className="inline-flex items-center gap-1 text-[12px] text-ink-muted group-hover:text-ink">
+              See proof
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink group-hover:text-accent-dim">
+            Back this on the markets
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
           </span>
-          <a href="/verify" className="inline-flex items-center gap-1 text-[12px] text-ink-muted hover:text-ink">
-            See proof
-            <ArrowRight className="w-3.5 h-3.5" />
-          </a>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </a>
   )
 }
